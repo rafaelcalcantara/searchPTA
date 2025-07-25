@@ -1,0 +1,22 @@
+Package: searchPTA
+Title: Searching For Regions of Feature Space Where Parallel Trends Hold
+Version: 0.0.0.9000
+Authors@R: 
+    c(person("Rafael", "Alcantara", , "rafael.campellodealcantara@mccombs.utexas.edu", role = c("aut", "cre")),
+    person("P. Richard", "Hahn", , "prhahn@asu.edu", role = c("aut")),
+    person("Andrew", "Herren", , "andrew.herren@mccombs.utexas.edu", role = c("aut")))
+Description: Tool for exploring the data in order to find regions where we can reasonably assume the parallel trends assumption holds.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2
+Imports:
+    stats,
+    utils,
+    rpart
+Suggests: 
+    knitr,
+    rmarkdown,
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
+VignetteBuilder: knitr
