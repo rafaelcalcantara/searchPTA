@@ -95,11 +95,12 @@ placebo.cart <- function(x,beta1,beta0,epsilon)
 #' @param epsilon Parameter that dictates how close the trends between two groups needs to be for PTA to be considered valid
 pta.nodes <- function(placebo_cart,epsilon)
 {
+  N <- length(placebo_cart$y)/2
   ## Determine which nodes have b1-b0 close enough to zero
   ind <- which(abs(placebo_cart$frame$yval)<epsilon)
   ind <- rownames(placebo_cart$frame)[ind]
   ## If there are no regions identified by CART, we simply return a nx1 matrix with all elements equal to FALSE
-  if (length(ind)==0) return(matrix(FALSE,n,1))
+  if (length(ind)==0) return(matrix(FALSE,N,1))
   ## The path.rpart function gets the splitting rule for a specified node or set of nodes
   ## We will use it to determine the regions where PTA is likely to hold
   ## First, we get the path for every node (internal or terminal)
@@ -149,17 +150,16 @@ pta.nodes <- function(placebo_cart,epsilon)
   ## The object leaf.vec stores the name of the leaf node each i falls into
   leaf.vec <- rownames(placebo_cart$frame)[placebo_cart$where]
   ## Now, we make a list of size N which stores the path that reaches the leaf node of each i
-  n <- length(placebo_cart$y)/2
-  leaf.per.point <- vector("list",n)
-  for (i in 1:n)
+  leaf.per.point <- vector("list",N)
+  for (i in 1:N)
   {
     leaf.per.point[[i]] <- path.nodes[[leaf.vec[i]]]
   }
   ## Finally, we create a N x length(ind) matrix. Each column of this matrix stores a boolean vector
   ### which equals TRUE when i crosses a given PTA region. E.g. if the columns refer to regions x = 2 and x \in {3,4}
   ### the matrix has 2 columns, one which tracks points with x=2, and one for points with x \in {3,4}.
-  regions <- matrix(FALSE,n,length(ind))
-  for (i in 1:n)
+  regions <- matrix(FALSE,N,length(ind))
+  for (i in 1:N)
   {
     for (j in 1:ncol(regions))
     {

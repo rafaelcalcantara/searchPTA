@@ -56,7 +56,7 @@ library(searchPTA)
   ### Generate outcome
   idx <- cbind(x,g+1)
   Ey <- mu[idx] + beta[idx]*t + tau[idx]*z + alpha[idx]*z*t
-  y <- Ey + 0.5*sd(Ey)*rnorm(n)
+  y <- Ey + 0.2*sd(Ey)*rnorm(n)
   df <- data.frame(y,t,g,x1=c(x1,x1,x1),x2=c(x2,x2,x2))
   df_main <- subset(df,t>=0)
   df_placebo <- subset(df,t<=0)
@@ -64,7 +64,7 @@ library(searchPTA)
 
 ```{r fit_BART}
 ### Function to fit S-Learner BART with DiD regression in the leaves
-  fit.bart.did <- function(df_train,df_test,features,num_trees=50,max_depth=20)
+  fit.bart.did <- function(df_train,df_test,features,draws=500,num_trees=50,max_depth=20)
   {
     out <- list(b1=NULL,b0=NULL)
     df.x.train <- subset(df_train,select=features)
@@ -72,6 +72,9 @@ library(searchPTA)
     ## Set G to (0,1)
     df_train$g <- df_train$g - min(df_train$g)
     df_test$g <- df_test$g - min(df_test$g)
+    ## Set t to (0,1)
+    df_train$t <- df_train$t - min(df_train$t)
+    df_test$t <- df_test$t - min(df_test$t)
     ## Lists of parameters for the Stochtree BART function
     bart.global.parmlist <- list(standardize=T,sample_sigma_global=TRUE,sigma2_global_init=0.1)
     bart.mean.parmlist <- list(num_trees=num_trees, min_samples_leaf=20, alpha=0.95, beta=2,
@@ -83,7 +86,7 @@ library(searchPTA)
     bart.fit = stochtree::bart(X_train=df.x.train, y_train=df_train$y,
                                leaf_basis_train = Psi, mean_forest_params=bart.mean.parmlist,
                                general_params=bart.global.parmlist,
-                               num_mcmc=500,num_gfr=50)
+                               num_mcmc=draws,num_gfr=50)
     ## Extract beta for g=1 and g=0
     ### We use the 'predict_raw' function from the bart.fit object
     ### 1) Pre-process test data to the format expected by the predict_raw function
@@ -101,14 +104,97 @@ library(searchPTA)
     out$b0 <- betas[,3,]*sd(df_train$y)
     return(out)
   }
+######
+draws <- 500
+time <- system.time({
   ## Obtain \beta_1 and \beta_0 placebo predictions for main data
-  bart_placebo <- fit.bart.did(df_placebo,df_main,4:5)
+  bart_placebo <- fit.bart.did(df_placebo,df_main,draws=draws,4:5)
   ## Obtain \hat{\tau} for main regression:
-  bart_main <- fit.bart.did(df_main,df_main,4:5)
+  bart_main <- fit.bart.did(df_main,df_main,draws=draws,4:5)
+})
 ```
 
-```{r searchPTA}
-draw <- 10
-test <- searchPTA(subset(df_main,select=4:5),bart_placebo$b1[,draw],bart_placebo$b0[,draw],bart_main$b1[,draw],bart_main$b0[,draw],0.05)
+```{r}
+time <- system.time(
+  {
+    test <- mapply(function(i,j) searchPTA(subset(df_main,select=4:5),bart_placebo$b1[,i],bart_placebo$b0[,i],bart_main$b1[,j],bart_main$b0[,j],0.01),
+               # i=sample(1:draws,replace=TRUE),j=1:draws,SIMPLIFY = FALSE)
+               i=1:draws,j=1:draws,SIMPLIFY = FALSE)
+  }
+)
+
+summary(sapply(test, function(i) length(i$catt)))
 ```
 
+```{r}
+catt2 <- unlist(lapply(1:length(test), function(i) test[[i]]$catt[x[t>=0]==2]))
+hist(catt2)
+abline(v=tau_1[2]+alpha_1[2],lty=2)
+###
+catt3 <- unlist(lapply(1:length(test), function(i) test[[i]]$catt[x[t>=0]==3]))
+hist(catt3)
+abline(v=0.5*(tau_1[3]+alpha_1[3]+tau_1[4]+alpha_1[4]),lty=2)
+###
+catt4 <- unlist(lapply(1:length(test), function(i) test[[i]]$catt[x[t>=0]==4]))
+hist(catt4)
+abline(v=0.5*(tau_1[3]+alpha_1[3]+tau_1[4]+alpha_1[4]),lty=2)
+```
+```{r}
+test <- mapply(function(i,j) searchPTA(subset(df_main,select=4:5),bart_placebo$b1[,i],bart_placebo$b0[,i],bart_main$b1[,j],bart_main$b0[,j],0.05),
+               # i=sample(1:draws,replace=TRUE),j=1:draws,SIMPLIFY = FALSE)
+               i=1:draws,j=1:draws,SIMPLIFY = FALSE)
+```
+
+```{r}
+catt2 <- unlist(lapply(1:length(test), function(i) test[[i]]$catt[x[t>=0]==2]))
+hist(catt2)
+abline(v=tau_1[2]+alpha_1[2],lty=2)
+###
+catt3 <- unlist(lapply(1:length(test), function(i) test[[i]]$catt[x[t>=0]==3]))
+hist(catt3)
+abline(v=0.5*(tau_1[3]+alpha_1[3]+tau_1[4]+alpha_1[4]),lty=2)
+###
+catt4 <- unlist(lapply(1:length(test), function(i) test[[i]]$catt[x[t>=0]==4]))
+hist(catt4)
+abline(v=0.5*(tau_1[3]+alpha_1[3]+tau_1[4]+alpha_1[4]),lty=2)
+```
+
+```{r}
+test <- mapply(function(i,j) searchPTA(subset(df_main,select=4:5),bart_placebo$b1[,i],bart_placebo$b0[,i],bart_main$b1[,j],bart_main$b0[,j],0.1),
+               # i=sample(1:draws,replace=TRUE),j=1:draws,SIMPLIFY = FALSE)
+               i=1:draws,j=1:draws,SIMPLIFY = FALSE)
+```
+
+```{r}
+catt2 <- unlist(lapply(1:length(test), function(i) test[[i]]$catt[x[t>=0]==2]))
+hist(catt2)
+abline(v=tau_1[2]+alpha_1[2],lty=2)
+###
+catt3 <- unlist(lapply(1:length(test), function(i) test[[i]]$catt[x[t>=0]==3]))
+hist(catt3)
+abline(v=0.5*(tau_1[3]+alpha_1[3]+tau_1[4]+alpha_1[4]),lty=2)
+###
+catt4 <- unlist(lapply(1:length(test), function(i) test[[i]]$catt[x[t>=0]==4]))
+hist(catt4)
+abline(v=0.5*(tau_1[3]+alpha_1[3]+tau_1[4]+alpha_1[4]),lty=2)
+```
+
+```{r}
+test <- mapply(function(i,j) searchPTA(subset(df_main,select=4:5),bart_placebo$b1[,i],bart_placebo$b0[,i],bart_main$b1[,j],bart_main$b0[,j],0.5),
+               # i=sample(1:draws,replace=TRUE),j=1:draws,SIMPLIFY = FALSE)
+               i=1:draws,j=1:draws,SIMPLIFY = FALSE)
+```
+
+```{r}
+catt2 <- unlist(lapply(1:length(test), function(i) test[[i]]$catt[x[t>=0]==2]))
+hist(catt2)
+abline(v=tau_1[2]+alpha_1[2],lty=2)
+###
+catt3 <- unlist(lapply(1:length(test), function(i) test[[i]]$catt[x[t>=0]==3]))
+hist(catt3)
+abline(v=0.5*(tau_1[3]+alpha_1[3]+tau_1[4]+alpha_1[4]),lty=2)
+###
+catt4 <- unlist(lapply(1:length(test), function(i) test[[i]]$catt[x[t>=0]==4]))
+hist(catt4)
+abline(v=0.5*(tau_1[3]+alpha_1[3]+tau_1[4]+alpha_1[4]),lty=2)
+```
