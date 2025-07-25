@@ -185,6 +185,7 @@ catt.per.region <- function(beta1,beta0,regions)
   return(out)
 }
 #' searchPTA
+#'
 #' Wrapper function to perform all operations
 #' @param x Feature set from main data
 #' @param beta1_placebo beta_1 prediction for main data from placebo regression
@@ -192,6 +193,8 @@ catt.per.region <- function(beta1,beta0,regions)
 #' @param beta1_main beta_1 prediction from main regression
 #' @param beta0_main beta_0 prediction from main regression
 #' @param epsilon Parameter that dictates how close the trends between two groups needs to be for PTA to be considered valid
+#' @return List with 1 - CART tree exploring PTA regions; 2 - matrix of PTA regions; 3 - CATT predictions for x_i given its PTA region
+#' @export
 searchPTA <- function(x,beta1_placebo,beta0_placebo,beta1_main,beta0_main,epsilon)
 {
   placebo_cart <- placebo.cart(x,beta1_placebo,beta0_placebo,epsilon)

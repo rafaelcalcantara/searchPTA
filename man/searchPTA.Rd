@@ -2,8 +2,7 @@
 % Please edit documentation in R/functions.R
 \name{searchPTA}
 \alias{searchPTA}
-\title{searchPTA
-Wrapper function to perform all operations}
+\title{searchPTA}
 \usage{
 searchPTA(x, beta1_placebo, beta0_placebo, beta1_main, beta0_main, epsilon)
 }
@@ -20,7 +19,9 @@ searchPTA(x, beta1_placebo, beta0_placebo, beta1_main, beta0_main, epsilon)
 
 \item{epsilon}{Parameter that dictates how close the trends between two groups needs to be for PTA to be considered valid}
 }
+\value{
+List with 1 - CART tree exploring PTA regions; 2 - matrix of PTA regions; 3 - CATT predictions for x_i given its PTA region
+}
 \description{
-searchPTA
 Wrapper function to perform all operations
 }

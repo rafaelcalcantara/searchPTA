@@ -15,6 +15,7 @@ knitr::opts_chunk$set(
 ```
 
 ```{r setup}
+devtools::install_github("rafaelcalcantara/searchPTA")
 library(searchPTA)
 ```
 
@@ -107,6 +108,7 @@ library(searchPTA)
 ```
 
 ```{r searchPTA}
+draw <- 10
 test <- searchPTA(subset(df_main,select=4:5),bart_placebo$b1[,draw],bart_placebo$b0[,draw],bart_main$b1[,draw],bart_main$b0[,draw],0.05)
 ```
 
