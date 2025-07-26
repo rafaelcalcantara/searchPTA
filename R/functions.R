@@ -193,14 +193,21 @@ catt.per.region <- function(beta1,beta0,regions)
 #' @param beta1_main beta_1 prediction from main regression
 #' @param beta0_main beta_0 prediction from main regression
 #' @param epsilon Parameter that dictates how close the trends between two groups needs to be for PTA to be considered valid
+#' @param saveCART Whether or not to save the CART tree fit in the first step
 #' @return List with 1 - CART tree exploring PTA regions; 2 - matrix of PTA regions; 3 - CATT predictions for x_i given its PTA region
 #' @export
-searchPTA <- function(x,beta1_placebo,beta0_placebo,beta1_main,beta0_main,epsilon)
+searchPTA <- function(x,beta1_placebo,beta0_placebo,beta1_main,beta0_main,epsilon,saveCART=TRUE)
 {
   placebo_cart <- placebo.cart(x,beta1_placebo,beta0_placebo,epsilon)
   regions <- pta.nodes(placebo_cart,epsilon)
   catt <- catt.per.region(beta1_main,beta0_main,regions)
-  return(list(cart=placebo_cart,regions=regions,catt=catt))
+  if (saveCART)
+  {
+    return(list(cart=placebo_cart,regions=regions,catt=catt))
+  } else
+  {
+    return(list(regions=regions,catt=catt))
+  }
 }
 # ## ----pta.catt-----------------------------------------------------------------
 # ### Function to perform operations on all nodes

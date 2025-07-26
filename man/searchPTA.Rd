@@ -4,7 +4,15 @@
 \alias{searchPTA}
 \title{searchPTA}
 \usage{
-searchPTA(x, beta1_placebo, beta0_placebo, beta1_main, beta0_main, epsilon)
+searchPTA(
+  x,
+  beta1_placebo,
+  beta0_placebo,
+  beta1_main,
+  beta0_main,
+  epsilon,
+  saveCART = TRUE
+)
 }
 \arguments{
 \item{x}{Feature set from main data}
@@ -18,6 +26,8 @@ searchPTA(x, beta1_placebo, beta0_placebo, beta1_main, beta0_main, epsilon)
 \item{beta0_main}{beta_0 prediction from main regression}
 
 \item{epsilon}{Parameter that dictates how close the trends between two groups needs to be for PTA to be considered valid}
+
+\item{saveCART}{Whether or not to save the CART tree fit in the first step}
 }
 \value{
 List with 1 - CART tree exploring PTA regions; 2 - matrix of PTA regions; 3 - CATT predictions for x_i given its PTA region
