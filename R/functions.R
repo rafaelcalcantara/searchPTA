@@ -7,6 +7,7 @@
 #' @param x Explanatory variable
 #' @param epsilon Parameter that dictates how close the trends between two groups needs to be for PTA to be considered valid
 #' For example, we will consider that PTA holds in regions where beta_1 - beta_0 <= epsilon
+#' @export
 cart_split <- function(y,x,epsilon)
 {
   ### 1) init function
@@ -75,6 +76,7 @@ cart_split <- function(y,x,epsilon)
 #' @param beta1 beta_1 prediction for main data from placebo regression
 #' @param beta0 beta_0 prediction for main data from placebo regression
 #' @param epsilon Parameter that dictates how close the trends between two groups needs to be for PTA to be considered valid
+#' @export
 placebo.cart <- function(x,beta1,beta0,epsilon)
 {
   ## Define output
@@ -93,6 +95,7 @@ placebo.cart <- function(x,beta1,beta0,epsilon)
 #' and stores which points belong in each region
 #' @param placebo_cart CART tree, output from placebo.cart function
 #' @param epsilon Parameter that dictates how close the trends between two groups needs to be for PTA to be considered valid
+#' @export
 pta.nodes <- function(placebo_cart,epsilon)
 {
   N <- length(placebo_cart$y)/2
@@ -173,6 +176,7 @@ pta.nodes <- function(placebo_cart,epsilon)
 #' @param beta1 beta_1 prediction from main regression
 #' @param beta0 beta_0 prediction from main regression
 #' @param regions PTA regions, output from pta.nodes function
+#' @export
 catt.per.region <- function(beta1,beta0,regions)
 {
   tau <- beta1 - beta0
