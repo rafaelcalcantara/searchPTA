@@ -4,9 +4,11 @@
 ## disaggregated PTA regions as possible, so each point should be assigned to
 ## *at most* one node
 ###############################################################################
-devtools::install_github("rafaelcalcantara/searchPTA")
+devtools::load_all()
 library(searchPTA)
-epsilon <- 0.05
+epsilon <- 0.01
+mcmc.draws <- 500
+set.seed(0)
 ### Function to fit S-Learner BART with DiD regression in the leaves
 fit.bart.did <- function(df_train,df_test,features,num_trees=50,max_depth=20)
 {
@@ -27,7 +29,7 @@ fit.bart.did <- function(df_train,df_test,features,num_trees=50,max_depth=20)
   bart.fit = stochtree::bart(X_train=df.x.train, y_train=df_train$y,
                              leaf_basis_train = Psi, mean_forest_params=bart.mean.parmlist,
                              general_params=bart.global.parmlist,
-                             num_mcmc=500,num_gfr=50)
+                             num_mcmc=mcmc.draws,num_gfr=50)
   ## Extract beta for g=1 and g=0
   ### We use the 'predict_raw' function from the bart.fit object
   ### 1) Pre-process test data to the format expected by the predict_raw function
@@ -51,15 +53,15 @@ fit.bart.did <- function(df_train,df_test,features,num_trees=50,max_depth=20)
 mu_1 <- c(1,3,1,3)
 mu_0 <- c(1,2,3,4)
 mu <- cbind(mu_0,mu_1)
-#########
+###
 beta_1 <- c(1,1,1,1)
 beta_0 <- c(7,1,2,0)
 beta <- cbind(beta_0,beta_1)
-#########
+###
 alpha_1 <- seq(0,1,length.out = 4)
 alpha_0 <- seq(1,0,length.out = 4)
 alpha <- cbind(alpha_0, alpha_1)
-#########
+###
 tau_1 <- c(1,2,3,4)
 tau_0 <- c(2,1,4,3)
 tau <- cbind(tau_0, tau_1)
@@ -73,22 +75,95 @@ x <- c(x,x,x)
 ### Generate outcome
 idx <- cbind(x,g+1)
 Ey <- mu[idx] + beta[idx]*t + tau[idx]*z + alpha[idx]*z*t
-y <- Ey + 0.5*sd(Ey)*rnorm(n)
-df <- data.frame(y,t,g,x=x)
+y <- Ey + 0.1*sd(Ey)*rnorm(n)
+df <- data.frame(y,t,g,x=as.factor(x))
 df_main <- subset(df,t>=0)
 df_placebo <- subset(df,t<=0)
 ### Checking the functions for true beta_1 and beta_0
 b1 <- beta_1[x]
 b0 <- beta_0[x]
-#### placebo.cart
-cart <- placebo.cart(data.frame(x=as.factor(x[t<=0])),b1[t<=0],b0[t<=0],epsilon)
-rpart.plot::rpart.plot(cart)
-### pta.nodes
-nodes <- pta.nodes(cart,epsilon)
-table(x[t<=0][nodes[,1]])
-table(x[t<=0][nodes[,2]])
-table(x[t<=0])
-### catt.per.region
-catt <- catt.per.region(b1[t>=0],b0[t>=0],nodes)
-catt[x[t>=0] == 2]
-catt[x[t>=0] %in% c(3,4)]
+tau1 <- tau_1[x]
+alpha1 <- alpha_1[x]
+test <- searchPTA(subset(df_main,select=4),b1[t<=0],b0[t<=0],b1[t>=0]+alpha1[t>=0]+tau1[t>=0],b0[t>=0],epsilon)
+summary(test$catt[x[t>=0] %in% 2:4])
+mean(tau_1[2:4] + alpha_1[2:4])
+summary(test$catt[x[t>=0]==2])
+tau_1[2] + alpha_1[2]
+summary(test$catt[x[t>=0] %in% 3:4])
+mean(tau_1[3:4] + alpha_1[3:4])
+### Checking the functions for BART draws
+bart_placebo <- fit.bart.did(df_placebo,df_main,4,num_trees=50,max_depth=20)
+bart_main <- fit.bart.did(df_main,df_main,4,num_trees=50,max_depth=20)
+test <- lapply(1:mcmc.draws, function(i) searchPTA(subset(df_main,select=4),bart_placebo$b1[,i],bart_placebo$b0[,i],bart_main$b1[,i],bart_main$b0[,i],epsilon))
+catt <- sapply(test, function(i) i$catt)
+mean(catt[x[t>=0] %in% 2:4], na.rm=T)
+mean(tau_1[2:4] + alpha_1[2:4])
+mean(catt[x[t>=0]==2,],na.rm=T)
+tau_1[2] + alpha_1[2]
+mean(catt[x[t>=0] %in% 3:4,],na.rm=T)
+mean(tau_1[3:4] + alpha_1[3:4])
+# 2) Now, we check the functions with continuous data--------------------------
+## Generate data
+### Define parameters for each group
+mu_1 <- c(1,3,1,3)
+mu_0 <- c(1,2,3,4)
+mu <- cbind(mu_0,mu_1)
+###
+beta_1 <- c(1,1,1,1)
+beta_0 <- c(7,1,2,0)
+beta <- cbind(beta_0,beta_1)
+###
+alpha_1 <- seq(0,1,length.out = 4)
+alpha_0 <- seq(1,0,length.out = 4)
+alpha <- cbind(alpha_0, alpha_1)
+###
+tau_1 <- c(1,2,3,4)
+tau_0 <- c(2,1,4,3)
+tau <- cbind(tau_0, tau_1)
+### Generate features
+n <- 1500
+t <- c(rep(-1,n/3),rep(0,n/3),rep(1,n/3))
+g <- rep(c(0,1),n/2)
+z <- g*(t==1)
+#########
+x1 <- runif(n/3)
+x2 <- runif(n/3)
+x <- rep(1,n/3)
+for (i in 1:(n/3))
+{
+  if (x1[i]>0.5 & x2[i]<0.5) x[i] <- 2
+  if (x1[i]>0.5 & x2[i]>0.5) x[i] <- 3
+  if (x1[i]<0.5 & x2[i]>0.5) x[i] <- 4
+}
+x <- c(x,x,x)
+### Generate outcome
+idx <- cbind(x,g+1)
+Ey <- mu[idx] + beta[idx]*t + tau[idx]*z + alpha[idx]*z*t
+y <- Ey + 0.5*sd(Ey)*rnorm(n)
+df <- data.frame(y,t,g,x1=c(x1,x1,x1),x2=c(x2,x2,x2))
+df_main <- subset(df,t>=0)
+df_placebo <- subset(df,t<=0)
+### Checking the functions for true beta_1 and beta_0
+b1 <- beta_1[x]
+b0 <- beta_0[x]
+tau1 <- tau_1[x]
+alpha1 <- alpha_1[x]
+test <- searchPTA(subset(df_main,select=4:5),b1[t<=0],b0[t<=0],b1[t>=0]+alpha1[t>=0]+tau1[t>=0],b0[t>=0],epsilon)
+summary(test$catt[x[t>=0] %in% 2:4])
+mean(tau_1[2:4] + alpha_1[2:4])
+summary(test$catt[x[t>=0]==2])
+tau_1[2] + alpha_1[2]
+summary(test$catt[x[t>=0] %in% 3:4])
+mean(tau_1[3:4] + alpha_1[3:4])
+### Checking the functions for BART draws
+bart_placebo <- fit.bart.did(df_placebo,df_main,4:5,num_trees=50,max_depth=20)
+bart_main <- fit.bart.did(df_main,df_main,4:5,num_trees=50,max_depth=20)
+test <- lapply(1:mcmc.draws, function(i) searchPTA(subset(df_main,select=4:5),bart_placebo$b1[,i],bart_placebo$b0[,i],bart_main$b1[,i],bart_main$b0[,i],epsilon,saveCART = FALSE))
+any(sapply(test, function(i) any(rowSums(i$regions)>1)))
+catt <- sapply(test, function(i) i$catt)
+mean(catt[x[t>=0] %in% 2:4], na.rm=T)
+mean(tau_1[2:4] + alpha_1[2:4])
+mean(catt[x[t>=0]==2,],na.rm=T)
+tau_1[2] + alpha_1[2]
+mean(catt[x[t>=0] %in% 3:4,],na.rm=T)
+mean(tau_1[3:4] + alpha_1[3:4])

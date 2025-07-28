@@ -1,3 +1,30 @@
+#' fine_part
+#'
+#' Auxiliary function to obtain the finest partition for which beta1-beta0 ~ 0 in the CART tree
+#' @param list List that contains all regions where PTA holds, from the most aggregated to most disaggregated ones
+fine_part <- function(list)
+{
+  out <- sapply(1:length(list), function(i) {
+    any(sapply((1:length(list))[-i], function(j) {
+      all(list[[i]] %in% list[[j]])
+    }))
+  })
+  return(!out)
+}
+#' points.per.region
+#'
+#' Auxiliary function to create a matrix with N rows and ncol = number of PTA regions
+#' Each column is a boolean vector of size N equal to TRUE if a point falls into the region
+#' associated to that column
+points.per.region <- function(listA,listB)
+{
+  out <- sapply(listA, function(i) {
+    sapply(listB, function(j) {
+      all(i %in% j)
+    })
+  })
+  return(out)
+}
 #' custom_cart_split
 #'
 #' This code is adapted from the vignette in https://github.com/cran/rpart/blob/master/tests/usersplits.R
@@ -7,7 +34,6 @@
 #' @param x Explanatory variable
 #' @param epsilon Parameter that dictates how close the trends between two groups needs to be for PTA to be considered valid
 #' For example, we will consider that PTA holds in regions where beta_1 - beta_0 <= epsilon
-#' @export
 cart_split <- function(y,x,epsilon)
 {
   ### 1) init function
@@ -76,7 +102,6 @@ cart_split <- function(y,x,epsilon)
 #' @param beta1 beta_1 prediction for main data from placebo regression
 #' @param beta0 beta_0 prediction for main data from placebo regression
 #' @param epsilon Parameter that dictates how close the trends between two groups needs to be for PTA to be considered valid
-#' @export
 placebo.cart <- function(x,beta1,beta0,epsilon)
 {
   ## Define output
@@ -95,7 +120,6 @@ placebo.cart <- function(x,beta1,beta0,epsilon)
 #' and stores which points belong in each region
 #' @param placebo_cart CART tree, output from placebo.cart function
 #' @param epsilon Parameter that dictates how close the trends between two groups needs to be for PTA to be considered valid
-#' @export
 pta.nodes <- function(placebo_cart,epsilon)
 {
   N <- length(placebo_cart$y)/2
@@ -130,22 +154,8 @@ pta.nodes <- function(placebo_cart,epsilon)
   ### we want to keep only {2} and {3,4}
   ## To do that, we remove all nodes that are on the path to other nodes. E.g. if nodes 3,6,7 are flagged,
   ### node 3 is on the path to nodes 6 and 7, so it is removed
-  if (length(ind)>1) # If there is only one node flagged, this step is innocuous
-  {
-    index <- NULL
-    for (i in 1:(length(ind)-1))
-    {
-      for (j in (i+1):length(ind))
-      {
-        if (ind[i] %in% nodes.pta[[ind[j]]])
-        {
-          index <- append(index,i)
-          break
-        }
-      }
-    }
-    ind <- ind[1:length(ind) %in% index == FALSE]
-  }
+  finest.partitions <- fine_part(nodes.pta)
+  nodes.pta <- nodes.pta[finest.partitions]
   ## Now we get the full path for each point i \in {1,...,N}
   ## Element "where" in the rpart object gives:
   ### "the row number of frame corresponding to the leaf node that each observation falls into"
@@ -161,14 +171,7 @@ pta.nodes <- function(placebo_cart,epsilon)
   ## Finally, we create a N x length(ind) matrix. Each column of this matrix stores a boolean vector
   ### which equals TRUE when i crosses a given PTA region. E.g. if the columns refer to regions x = 2 and x \in {3,4}
   ### the matrix has 2 columns, one which tracks points with x=2, and one for points with x \in {3,4}.
-  regions <- matrix(FALSE,N,length(ind))
-  for (i in 1:N)
-  {
-    for (j in 1:ncol(regions))
-    {
-      if (ind[j] %in% leaf.per.point[[i]]) regions[i,j] <- TRUE
-    }
-  }
+  regions <- points.per.region(nodes.pta,leaf.per.point)
   return(regions)
 }
 #' catt.per.region
@@ -176,7 +179,6 @@ pta.nodes <- function(placebo_cart,epsilon)
 #' @param beta1 beta_1 prediction from main regression
 #' @param beta0 beta_0 prediction from main regression
 #' @param regions PTA regions, output from pta.nodes function
-#' @export
 catt.per.region <- function(beta1,beta0,regions)
 {
   tau <- beta1 - beta0
