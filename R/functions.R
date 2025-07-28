@@ -80,7 +80,7 @@ cart_split <- function(y,x,epsilon)
 placebo.cart <- function(x,beta1,beta0,epsilon)
 {
   ## Define output
-  y <- c(beta1,-beta0)
+  y <- 2*c(beta1,-beta0)
   ## Adjust X format (e.g. one-hot encode levels of factors etc.)
   xm <- model.matrix(~.-1, data = x)
   ## data.frame with y,x (x has to be duplicated since we use both beta_1(x) and -beta_0(x) as outputs)

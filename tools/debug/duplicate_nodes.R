@@ -6,6 +6,7 @@
 ###############################################################################
 devtools::install_github("rafaelcalcantara/searchPTA")
 library(searchPTA)
+epsilon <- 0.05
 ### Function to fit S-Learner BART with DiD regression in the leaves
 fit.bart.did <- function(df_train,df_test,features,num_trees=50,max_depth=20)
 {
@@ -79,3 +80,15 @@ df_placebo <- subset(df,t<=0)
 ### Checking the functions for true beta_1 and beta_0
 b1 <- beta_1[x]
 b0 <- beta_0[x]
+#### placebo.cart
+cart <- placebo.cart(data.frame(x=as.factor(x[t<=0])),b1[t<=0],b0[t<=0],epsilon)
+rpart.plot::rpart.plot(cart)
+### pta.nodes
+nodes <- pta.nodes(cart,epsilon)
+table(x[t<=0][nodes[,1]])
+table(x[t<=0][nodes[,2]])
+table(x[t<=0])
+### catt.per.region
+catt <- catt.per.region(b1[t>=0],b0[t>=0],nodes)
+catt[x[t>=0] == 2]
+catt[x[t>=0] %in% c(3,4)]
