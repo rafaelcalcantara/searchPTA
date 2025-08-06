@@ -102,7 +102,8 @@ cart_split <- function(y,x,epsilon)
 #' @param beta1 beta_1 prediction for main data from placebo regression
 #' @param beta0 beta_0 prediction for main data from placebo regression
 #' @param epsilon Parameter that dictates how close the trends between two groups needs to be for PTA to be considered valid
-placebo.cart <- function(x,beta1,beta0,epsilon)
+#' @param cp Complexity parameter from the rpart function
+placebo.cart <- function(x,beta1,beta0,epsilon,cp)
 {
   ## Define output
   y <- 2*c(beta1,-beta0)
@@ -111,7 +112,7 @@ placebo.cart <- function(x,beta1,beta0,epsilon)
   ## data.frame with y,x (x has to be duplicated since we use both beta_1(x) and -beta_0(x) as outputs)
   xm <- data.frame(y,x = rbind(xm,xm))
   ## Fit CART tree
-  out <- rpart::rpart(y~., data = xm,method = cart_split(y,x,epsilon) , cp = 0)
+  out <- rpart::rpart(y~., data = xm,method = cart_split(y,x,epsilon) , cp = cp)
   return(out)
 }
 #' pta.nodes
@@ -142,12 +143,14 @@ pta.nodes <- function(placebo_cart,epsilon)
   final.node.in.path <- do.call("rbind",lapply(path,tail,1))
   final.node.in.path <- cbind(node=rownames(final.node.in.path),split=final.node.in.path)
   path.nodes <- path
+  t0 <- Sys.time()
   for (i in 1:length(path))
   {
     ## This step merges the split rules in a given path to the nodes associated with each rule
     temp <- merge(final.node.in.path,path[[i]],by.x=2,by.y=1,sort=FALSE)
     path.nodes[[i]] <- temp[,2]
   }
+  t1 <- Sys.time()
   ## Keeping only nodes that are flagged as PTA regions by CART
   nodes.pta <- path.nodes[ind]
   ## Now, we filter to keep only the finest partition possible. E.g. if {2}, {3,4} and {2,3,4} are all flagged,
@@ -168,10 +171,14 @@ pta.nodes <- function(placebo_cart,epsilon)
   {
     leaf.per.point[[i]] <- path.nodes[[leaf.vec[i]]]
   }
+  t2 <- Sys.time()
   ## Finally, we create a N x length(ind) matrix. Each column of this matrix stores a boolean vector
   ### which equals TRUE when i crosses a given PTA region. E.g. if the columns refer to regions x = 2 and x \in {3,4}
   ### the matrix has 2 columns, one which tracks points with x=2, and one for points with x \in {3,4}.
   regions <- points.per.region(nodes.pta,leaf.per.point)
+  t3 <- Sys.time()
+  print(t1-t0)
+  print(t3-t2)
   return(regions)
 }
 #' catt.per.region
@@ -202,9 +209,9 @@ catt.per.region <- function(beta1,beta0,regions)
 #' @param saveCART Whether or not to save the CART tree fit in the first step
 #' @return List with 1 - CART tree exploring PTA regions; 2 - matrix of PTA regions; 3 - CATT predictions for x_i given its PTA region
 #' @export
-searchPTA <- function(x,beta1_placebo,beta0_placebo,beta1_main,beta0_main,epsilon,saveCART=TRUE)
+searchPTA <- function(x,beta1_placebo,beta0_placebo,beta1_main,beta0_main,epsilon,saveCART=TRUE,cp=0)
 {
-  placebo_cart <- placebo.cart(x,beta1_placebo,beta0_placebo,epsilon)
+  placebo_cart <- placebo.cart(x,beta1_placebo,beta0_placebo,epsilon,cp)
   regions <- pta.nodes(placebo_cart,epsilon)
   catt <- catt.per.region(beta1_main,beta0_main,regions)
   if (saveCART)
