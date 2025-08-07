@@ -1,3 +1,19 @@
+get_node_paths <- function(rpart_obj) {
+  node_ids <- as.numeric(rownames(rpart_obj$frame))
+
+  paths <- lapply(node_ids, function(n) {
+    path <- c()
+    while (n >= 1) {
+      path <- c(n, path)  # prepend
+      if (n == 1) break
+      n <- n %/% 2
+    }
+    path
+  })
+
+  names(paths) <- node_ids
+  return(paths)
+}
 #' fine_part
 #'
 #' Auxiliary function to obtain the finest partition for which beta1-beta0 ~ 0 in the CART tree
@@ -16,6 +32,8 @@ fine_part <- function(list)
 #' Auxiliary function to create a matrix with N rows and ncol = number of PTA regions
 #' Each column is a boolean vector of size N equal to TRUE if a point falls into the region
 #' associated to that column
+#' @param listA List of finest partitions for which PTA holds
+#' @param listB List which stores the path that reaches the leaf node of each i
 points.per.region <- function(listA,listB)
 {
   out <- sapply(listA, function(i) {
@@ -25,6 +43,20 @@ points.per.region <- function(listA,listB)
   })
   return(out)
 }
+
+points.per.region.alt <- function(listA,listB)
+{
+  out <- matrix(FALSE,nrow=length(listB),ncol=length(listA))
+  for (i in 1:nrow(out))
+  {
+    ind <- which(as.numeric(names(listA)) %in% listB[[i]])
+    if (length(ind)>0) out[i,ind] <- TRUE
+  }
+  colnames(out) <- names(listA)
+  rownames(out) <- names(listB)
+  return(out)
+}
+
 #' custom_cart_split
 #'
 #' This code is adapted from the vignette in https://github.com/cran/rpart/blob/master/tests/usersplits.R
@@ -132,7 +164,11 @@ pta.nodes <- function(placebo_cart,epsilon)
   ## The path.rpart function gets the splitting rule for a specified node or set of nodes
   ## We will use it to determine the regions where PTA is likely to hold
   ## First, we get the path for every node (internal or terminal)
-  path <- rpart::path.rpart(placebo_cart, node = as.numeric(rownames(placebo_cart$frame)),print.it = FALSE)
+  # t0 <- Sys.time()
+  # path <- rpart::path.rpart(placebo_cart, nodes = as.numeric(rownames(placebo_cart$frame)),print.it = FALSE)
+  # t1 <- Sys.time()
+  # print("path.rpart time")
+  # print(t1-t0)
   ## The output of path.rpart is a character vector of the form c("root","split.rule.1","split.rule.2") etc.
   ## Now, we map these vectors to node names as defined by rpart
   ## The object final.node.in.path obtains the last node which appears in a certain path
@@ -140,24 +176,44 @@ pta.nodes <- function(placebo_cart,epsilon)
   ### We want node 2 to be associated with "x2 < 0.5", so the path "root -> x2 < 0.5" becomes "1 -> 2".
   ### Similarly, suppose node 4 is defined by root -> x2 < 0.5 -> x4 < 0.5.
   ### We want node 4 to be associated with "x4 < 0.5", so the path "root -> x2 < 0.5 -> x4 < 0.5" becomes "1 -> 2 -> 4".
-  final.node.in.path <- do.call("rbind",lapply(path,tail,1))
-  final.node.in.path <- cbind(node=rownames(final.node.in.path),split=final.node.in.path)
-  path.nodes <- path
+  # t0 <- Sys.time()
+  # final.node.in.path <- do.call("rbind",lapply(path,tail,1))
+  # final.node.in.path <- cbind(node=rownames(final.node.in.path),split=final.node.in.path)
+  # path.nodes <- vector("list",length(path))
+  # names(path.nodes) <- names(path)
+  # t0 <- Sys.time()
+  # for (i in 1:length(path))
+  # {
+  #   ## This step merges the split rules in a given path to the nodes associated with each rule
+  #   # temp <- merge(final.node.in.path,path[[i]],by.x=2,by.y=1,sort=FALSE)
+  #   # path.nodes[[i]] <- temp[,2]
+  #   temp <- final.node.in.path[final.node.in.path[,2] %in% path[[i]],1]
+  #   path.nodes[[i]] <- as.numeric(temp)
+  # }
+  # t1 <- Sys.time()
+  # print("fill up path.nodes vector time")
+  # print(t1-t0)
+  # path.nodes <- lapply(path, function(i) as.numeric(final.node.in.path[final.node.in.path[,2] %in% i,1]))
+  # t1 <- Sys.time()
+  # print("fill up path.nodes with lapply time")
+  # print(t1-t0)
   t0 <- Sys.time()
-  for (i in 1:length(path))
-  {
-    ## This step merges the split rules in a given path to the nodes associated with each rule
-    temp <- merge(final.node.in.path,path[[i]],by.x=2,by.y=1,sort=FALSE)
-    path.nodes[[i]] <- temp[,2]
-  }
+  path.nodes <- get_node_paths(placebo_cart)
   t1 <- Sys.time()
+  # print("create path.nodes with other function time")
+  # print(t1-t0)
+  # rm(path)
   ## Keeping only nodes that are flagged as PTA regions by CART
   nodes.pta <- path.nodes[ind]
   ## Now, we filter to keep only the finest partition possible. E.g. if {2}, {3,4} and {2,3,4} are all flagged,
   ### we want to keep only {2} and {3,4}
   ## To do that, we remove all nodes that are on the path to other nodes. E.g. if nodes 3,6,7 are flagged,
   ### node 3 is on the path to nodes 6 and 7, so it is removed
+  t0 <- Sys.time()
   finest.partitions <- fine_part(nodes.pta)
+  t1 <- Sys.time()
+  # print("fine_part time")
+  # print(t1-t0)
   nodes.pta <- nodes.pta[finest.partitions]
   ## Now we get the full path for each point i \in {1,...,N}
   ## Element "where" in the rpart object gives:
@@ -167,18 +223,24 @@ pta.nodes <- function(placebo_cart,epsilon)
   leaf.vec <- rownames(placebo_cart$frame)[placebo_cart$where]
   ## Now, we make a list of size N which stores the path that reaches the leaf node of each i
   leaf.per.point <- vector("list",N)
+  t0 <- Sys.time()
   for (i in 1:N)
   {
     leaf.per.point[[i]] <- path.nodes[[leaf.vec[i]]]
   }
-  t2 <- Sys.time()
+  t1 <- Sys.time()
+  # print("fill up leaf.per.point vec time")
+  # print(t1-t0)
   ## Finally, we create a N x length(ind) matrix. Each column of this matrix stores a boolean vector
   ### which equals TRUE when i crosses a given PTA region. E.g. if the columns refer to regions x = 2 and x \in {3,4}
   ### the matrix has 2 columns, one which tracks points with x=2, and one for points with x \in {3,4}.
-  regions <- points.per.region(nodes.pta,leaf.per.point)
-  t3 <- Sys.time()
-  print(t1-t0)
-  print(t3-t2)
+  # regions <- points.per.region(nodes.pta,leaf.per.point)
+  # t3 <- Sys.time()
+  regions <- points.per.region.alt(nodes.pta,leaf.per.point)
+  # t4 <- Sys.time()
+  # print(t1-t0)
+  # print(t3-t2)
+  # print(t4-t3)
   return(regions)
 }
 #' catt.per.region
@@ -211,9 +273,16 @@ catt.per.region <- function(beta1,beta0,regions)
 #' @export
 searchPTA <- function(x,beta1_placebo,beta0_placebo,beta1_main,beta0_main,epsilon,saveCART=TRUE,cp=0)
 {
+  t0 <- Sys.time()
   placebo_cart <- placebo.cart(x,beta1_placebo,beta0_placebo,epsilon,cp)
+  t1 <- Sys.time()
   regions <- pta.nodes(placebo_cart,epsilon)
+  t2 <- Sys.time()
   catt <- catt.per.region(beta1_main,beta0_main,regions)
+  t3 <- Sys.time()
+  # print(t1-t0)
+  # print(t2-t1)
+  # print(t3-t2)
   if (saveCART)
   {
     return(list(cart=placebo_cart,regions=regions,catt=catt))
