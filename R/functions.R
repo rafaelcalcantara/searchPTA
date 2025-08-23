@@ -130,7 +130,8 @@ cart_split <- function(y,x,epsilon)
 #' @param beta0 beta_0 prediction for main data from placebo regression
 #' @param epsilon Parameter that dictates how close the trends between two groups needs to be for PTA to be considered valid
 #' @param cp Complexity parameter from the rpart function
-placebo.cart <- function(x,beta1,beta0,epsilon,cp)
+#' @param ... Additional arguments for rpart.control --- control CART tree growth
+placebo.cart <- function(x,beta1,beta0,epsilon,...)
 {
   ## Define output
   y <- 2*c(beta1,-beta0)
@@ -139,7 +140,7 @@ placebo.cart <- function(x,beta1,beta0,epsilon,cp)
   ## data.frame with y,x (x has to be duplicated since we use both beta_1(x) and -beta_0(x) as outputs)
   xm <- data.frame(y,x = rbind(xm,xm))
   ## Fit CART tree
-  out <- rpart::rpart(y~., data = xm,method = cart_split(y,x,epsilon) , cp = cp)
+  out <- rpart::rpart(y~., data = xm,method = cart_split(y,x,epsilon) , ...)
   return(out)
 }
 #' pta.nodes
@@ -207,13 +208,14 @@ catt.per.region <- function(beta1,beta0,regions)
 #' @param beta0_main beta_0 prediction from main regression
 #' @param epsilon Parameter that dictates how close the trends between two groups needs to be for PTA to be considered valid
 #' @param saveCART Whether or not to save the CART tree fit in the first step
+#' @param ... Additional arguments for rpart.control --- control CART tree growth
 #' @return List with 1 - CART tree exploring PTA regions; 2 - matrix of PTA regions; 3 - CATT predictions for x_i given its PTA region
 #' @export
-searchPTA <- function(x,beta1_placebo,beta0_placebo,beta1_main,beta0_main,epsilon,saveCART=TRUE,cp=0)
+searchPTA <- function(x,beta1_placebo,beta0_placebo,beta1_main,beta0_main,epsilon,saveCART=TRUE,...)
 {
-  placebo_cart <- placebo.cart(x,beta1_placebo,beta0_placebo,epsilon,cp)
-  regions <- pta.nodes(placebo_cart,epsilon)
-  catt <- catt.per.region(beta1_main,beta0_main,regions)
+  placebo_cart <- placebo.cart(x=x,beta1=beta1_placebo,beta0=beta0_placebo,epsilon=epsilon,...)
+  regions <- pta.nodes(placebo_cart=placebo_cart,epsilon=epsilon)
+  catt <- catt.per.region(beta1=beta1_main,beta0=beta0_main,regions=regions)
   if (saveCART)
   {
     return(list(cart=placebo_cart,regions=regions,catt=catt))
