@@ -11,26 +11,26 @@ searchPTA(
   beta1_main,
   beta0_main,
   epsilon,
-  saveCART = TRUE
+  saveCART = TRUE,
+  ...
 )
 }
 \arguments{
 \item{x}{Feature set from main data}
 
-\item{beta1_placebo}{beta_1 prediction for main data from placebo regression}
-
-\item{beta0_placebo}{beta_0 prediction for main data from placebo regression}
-
-\item{beta1_main}{beta_1 prediction from main regression}
-
-\item{beta0_main}{beta_0 prediction from main regression}
-
 \item{epsilon}{Parameter that dictates how close the trends between two groups needs to be for PTA to be considered valid}
 
 \item{saveCART}{Whether or not to save the CART tree fit in the first step}
-}
-\value{
-List with 1 - CART tree exploring PTA regions; 2 - matrix of PTA regions; 3 - CATT predictions for x_i given its PTA region
+
+\item{...}{Additional arguments for rpart.control --- control CART tree growth}
+
+\item{delta1_aux}{delta_1 prediction from auxiliary regression}
+
+\item{delta0_aux}{delta_0 prediction from auxiliary regression}
+
+\item{delta1_main}{delta_1 prediction from main regression}
+
+\item{delta0_main}{delta_0 prediction from main regression}
 }
 \description{
 Wrapper function to perform all operations

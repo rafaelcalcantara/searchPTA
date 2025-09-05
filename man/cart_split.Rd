@@ -12,7 +12,7 @@ cart_split(y, x, epsilon)
 \item{x}{Explanatory variable}
 
 \item{epsilon}{Parameter that dictates how close the trends between two groups needs to be for PTA to be considered valid
-For example, we will consider that PTA holds in regions where beta_1 - beta_0 <= epsilon}
+i.e. we will consider that PTA holds in regions where delta_1 - delta_0 <= epsilon}
 }
 \description{
 This code is adapted from the vignette in https://github.com/cran/rpart/blob/master/tests/usersplits.R

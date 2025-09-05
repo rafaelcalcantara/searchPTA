@@ -5,7 +5,7 @@ devtools::load_all()
 epsilon <- 0.01
 m <- 1000 ## Times to run function
 set.seed(0)
-# We check the functions with continuous data (no time issues for discrete data)
+# 1) Check functions with continuous data (no time issues for discrete data)---
 ## Generate data
 ### Define parameters for each group
 mu_1 <- c(1,3,1,3)
@@ -73,3 +73,30 @@ summary(test$catt[x[t>=0]==2])
 tau_1[2] + alpha_1[2]
 summary(test$catt[x[t>=0] %in% 3:4])
 mean(tau_1[3:4] + alpha_1[3:4])
+# 2) Empirical CDF-------------------------------------------------------------
+n <- 10000
+p <- 2
+rho <- 0.7
+out <- vector("list",length(n))
+## Calculate probabilities via empirical CDF and mvtnorm::pmvnorm
+for (i in 1:length(out))
+{
+  x1 <- rnorm(n[i])
+  x2 <- rnorm(n[i],rho*x1,sqrt(1-rho^2))
+  x <- cbind(x1,x2)
+  probs <- apply(x,1, function(j) mvtnorm::pmvnorm(upper=j,mean=rep(0,p),sigma=matrix(c(1,rho,rho,1),ncol=2)))
+  emp.cdf <- rep(NA,n[i])
+  for (j in 1:(n[i]))
+  {
+    temp <- x[j,]
+    emp.cdf[j] <- sum(x[,1]<temp[1] & x[,2]<temp[2])/n[i]
+  }
+  out[[i]] <- cbind(probs,emp.cdf)
+}
+## Plot results
+par(mfrow=c(2,2))
+for (i in 1:length(n))
+{
+  plot(out[[i]],xlab="CDF calculated using pmvnorm function",ylab="Empirical CDF",bty="l",pch=21,cex=0.7,main=paste0("N = ",n[i]))
+  abline(a=0,b=1)
+}
