@@ -22,7 +22,7 @@ get_node_paths <- function(rpart_obj) {
 }
 #' fine_part
 #'
-#' Auxiliary function to obtain the finest partition for which beta1-beta0 ~ 0 in the CART tree
+#' Auxiliary function to obtain the finest partition for which delta1-delta0 ~ 0 in the CART tree
 #' @param list List that contains all regions where PTA holds, from the most aggregated to most disaggregated ones
 fine_part <- function(list)
 {
@@ -60,7 +60,7 @@ points.per.region <- function(listA,listB)
 #' @param y Outcome variable
 #' @param x Explanatory variable
 #' @param epsilon Parameter that dictates how close the trends between two groups needs to be for PTA to be considered valid
-#' For example, we will consider that PTA holds in regions where beta_1 - beta_0 <= epsilon
+#' i.e. we will consider that PTA holds in regions where delta_1 - delta_0 <= epsilon
 cart_split <- function(y,x,epsilon)
 {
   ### 1) init function
@@ -74,28 +74,62 @@ cart_split <- function(y,x,epsilon)
          })
   }
   ### 2) 'evaluation' function
-  etemp <-  function(y, wt, parms) {
+  etemp <- function(y, wt, parms) {
     wmean <- sum(y*wt)/sum(wt)
     rss <- sum(wt*(y-wmean)^2)
-    list(label= wmean, deviance=rss)
+    w <- as.numeric(wt==1)
+    w1 <- w/sum(w) + (1-w)/sum(1-w)
+    yval <- sum(y*w1)
+    list(label = yval, deviance = rss)
   }
   ### 3) splitting function
   stemp <- function(y, wt, x, parms, continuous) {
-    # Center y
+    # We perform the calculations per G=g
+    w <- as.numeric(wt==1)
     n <- length(y)
-    ym <-  sum(y*wt)/sum(wt)
-    y <- y-ym
+    w1 <- w/sum(w) + (1-w)/sum(1-w)
 
     if (continuous) {
       # continuous x variable
-      temp <- cumsum(y*wt)[-n]
-
-      left.wt  <- cumsum(wt)[-n]
-      right.wt <- sum(wt) - left.wt
-      lmean <- temp/left.wt
-      rmean <- -temp/right.wt
-      goodness <- (left.wt*lmean^2 + right.wt*rmean^2)/sum(wt*y^2) + n*var(y)*((abs(rmean+ym) < epsilon) | (abs(lmean+ym) < epsilon))
-      list(goodness= goodness, direction=sign(lmean))
+      # Calculate sum-of-squares
+      ## G=1
+      # temp <- cumsum(y1*w)[-n]
+      # left.wt  <- cumsum(w)[-n]
+      # right.wt <- n - left.wt
+      # lmean1 <- temp/left.wt
+      # rmean1 <- -temp/right.wt
+      # ## If weight was 0, we get Inf for mean; it should be 0, as up until that point in the cumsum,
+      # ## the unit still had g==0 (conv. g==1). Set it to 0
+      # lmean1[is.nan(lmean1)] <- 0
+      # rmean1[is.nan(rmean1)] <- 0
+      # goodness <- (left.wt*lmean1^2 + right.wt*rmean1^2)/(sum((y1*w)^2)/sum(w) + sum((y1*(1-w))^2)/sum(1-w))
+      # ## G=0
+      # temp <- cumsum(y0*w)[-n]
+      # left.wt  <- cumsum(1-w)[-n]
+      # right.wt <- n - left.wt
+      # lmean0 <- temp/left.wt
+      # rmean0 <- -temp/right.wt
+      # ## If weight was 0, we get Inf for mean; it should be 0, as up until that point in the cumsum,
+      # ## the unit still had g==0 (conv. g==1). Set it to 0
+      # lmean0[is.nan(lmean0)] <- 0
+      # rmean0[is.nan(rmean0)] <- 0
+      # goodness <- goodness + (left.wt*lmean0^2 + right.wt*rmean0^2)/(sum((y1*w)^2)/sum(w) + sum((y1*(1-w))^2)/sum(1-w))
+      ## Add term for difference in delta means
+      temp1 <- cumsum(y*w)/cumsum(w)
+      temp0 <- cumsum(y*(1-w))/cumsum(1-w)
+      temp3 <- (sum(y*w)-cumsum(y*w))/(sum(w)-cumsum(w))
+      temp2 <- (sum(y*(1-w))-cumsum(y*(1-w)))/(sum(1-w)-cumsum(1-w))
+      lmean <- temp1+temp0
+      rmean <- temp3+temp2
+      ####
+      ym <- sum(y*w1)
+      goodness <- ((lmean-ym)^2 + (rmean-ym)^2)/(sum((y-ym)^2))
+      ####
+      delta.diff <- n*var(y)*((abs(rmean) < epsilon) | (abs(lmean) < epsilon))
+      goodness <- goodness[-n] + delta.diff[-n]
+      goodness <- ifelse(is.na(goodness),0,goodness)
+      ## Store results
+      list(goodness= goodness, direction=rep(-1,n-1))
     }
     else {
       # Categorical X variable
@@ -126,21 +160,21 @@ cart_split <- function(y,x,epsilon)
 #'
 #' Fit CART to predictions for main data from placebo regression
 #' @param x Main data feature set
-#' @param beta1 beta_1 prediction for main data from placebo regression
-#' @param beta0 beta_0 prediction for main data from placebo regression
+#' @param delta1 delta_1 prediction for main data from placebo regression
+#' @param delta0 delta_0 prediction for main data from placebo regression
 #' @param epsilon Parameter that dictates how close the trends between two groups needs to be for PTA to be considered valid
 #' @param cp Complexity parameter from the rpart function
 #' @param ... Additional arguments for rpart.control --- control CART tree growth
-placebo.cart <- function(x,beta1,beta0,epsilon,...)
+placebo.cart <- function(x,delta1,delta0,epsilon,wt,...)
 {
   ## Define output
-  y <- 2*c(beta1,-beta0)
+  y <- c(delta1,-delta0)
   ## Adjust X format (e.g. one-hot encode levels of factors etc.)
-  xm <- model.matrix(~.-1, data = x)
-  ## data.frame with y,x (x has to be duplicated since we use both beta_1(x) and -beta_0(x) as outputs)
-  xm <- data.frame(y,x = rbind(xm,xm))
+  xm <- model.matrix(~.-1, data = rbind(subset(x,g==1,select=which(names(x)!="g")),subset(x,g==0,select=which(names(x)!="g"))))
+  ## data.frame with y,x
+  xm <- data.frame(y,x = xm)
   ## Fit CART tree
-  out <- rpart::rpart(y~., data = xm,method = cart_split(y,x,epsilon) , ...)
+  out <- rpart::rpart(y~., data = xm,method = cart_split(y,x,epsilon), weights = wt, ...)
   return(out)
 }
 #' pta.nodes
@@ -151,7 +185,7 @@ placebo.cart <- function(x,beta1,beta0,epsilon,...)
 #' @param epsilon Parameter that dictates how close the trends between two groups needs to be for PTA to be considered valid
 pta.nodes <- function(placebo_cart,epsilon)
 {
-  N <- length(placebo_cart$y)/2
+  N <- length(placebo_cart$y)
   ## Determine which nodes have b1-b0 close enough to zero
   ind <- which(abs(placebo_cart$frame$yval)<epsilon)
   ind <- rownames(placebo_cart$frame)[ind]
@@ -182,45 +216,54 @@ pta.nodes <- function(placebo_cart,epsilon)
   regions <- points.per.region(nodes.pta,leaf.per.point)
   return(regions)
 }
-#' catt.per.region
-#' Obtain the CATT predictions for the main dataset for the points in each PTA region
-#' @param beta1 beta_1 prediction from main regression
-#' @param beta0 beta_0 prediction from main regression
+#' results.per.region
+#' Output results
+#' @param x feature set
+#' @param delta1_aux delta_1 prediction from auxiliary regression
+#' @param delta0_aux delta_0 prediction from auxiliary regression
+#' @param delta1_main delta_1 prediction from main regression
+#' @param delta0_main delta_0 prediction from main regression
 #' @param regions PTA regions, output from pta.nodes function
-catt.per.region <- function(beta1,beta0,regions)
+#' @param CART rpart object, either NULL, if saveCART==FALSE, or the object, if saveCART==TRUE
+#' @return list with: 1- Difference in betas per region; 2- CATT estimates per region; 3- matrix with regions; 4- lists with x per region and x with no flagged region; 6- CART tree
+results.per.region <- function(x,delta1_aux,delta0_aux,delta1_main,delta0_main,regions,CART=NULL)
 {
-  tau <- beta1 - beta0
-  out <- rep(NA,length(tau))
-  for (i in 1:nrow(regions))
-  {
-    part <- which(regions[i,])
-    out[i] <- mean(tau[regions[,part]])
-  }
+  g <- x$g
+  dbetas <- apply(regions,2, function(i) mean(delta1_aux[g==1 & i])-mean(delta0_aux[g==0 & i]))
+  catt <- apply(regions,2, function(i) mean(delta1_main[g==1 & i])-mean(delta0_main[g==0 & i]))
+  x.in.reg <- lapply(1:ncol(regions), function(i) x[regions[,i],])
+  x.not.in.reg <- x[rowSums(regions)==0,]
+  if (is.null(CART)) out <- list(beta.diff=dbetas,catt=catt,regions=regions,x.per.regions=x.in.reg,x.not.in.regions=x.not.in.reg)
+  else out <- list(beta.diff=dbetas,catt=catt,regions=regions,x.per.regions=x.in.reg,x.not.in.regions=x.not.in.reg,cart=CART)
   return(out)
 }
 #' searchPTA
 #'
 #' Wrapper function to perform all operations
 #' @param x Feature set from main data
-#' @param beta1_placebo beta_1 prediction for main data from placebo regression
-#' @param beta0_placebo beta_0 prediction for main data from placebo regression
-#' @param beta1_main beta_1 prediction from main regression
-#' @param beta0_main beta_0 prediction from main regression
+#' @param delta1_aux delta_1 prediction from auxiliary regression
+#' @param delta0_aux delta_0 prediction from auxiliary regression
+#' @param delta1_main delta_1 prediction from main regression
+#' @param delta0_main delta_0 prediction from main regression
 #' @param epsilon Parameter that dictates how close the trends between two groups needs to be for PTA to be considered valid
 #' @param saveCART Whether or not to save the CART tree fit in the first step
 #' @param ... Additional arguments for rpart.control --- control CART tree growth
-#' @return List with 1 - CART tree exploring PTA regions; 2 - matrix of PTA regions; 3 - CATT predictions for x_i given its PTA region
 #' @export
-searchPTA <- function(x,beta1_placebo,beta0_placebo,beta1_main,beta0_main,epsilon,saveCART=TRUE,...)
+searchPTA <- function(x,delta1_aux,delta0_aux,delta1_main,delta0_main,epsilon,saveCART=TRUE,...)
 {
-  placebo_cart <- placebo.cart(x=x,beta1=beta1_placebo,beta0=beta0_placebo,epsilon=epsilon,...)
+  delta1_aux <- delta1_aux[x$g==1]
+  delta0_aux <- delta0_aux[x$g==0]
+  g1.rows <- as.numeric(rownames(subset(x,g==1)))
+  g0.rows <- as.numeric(rownames(subset(x,g==0)))
+  wt <- c(rep(1,length(delta1_aux)),rep(2,length(delta0_aux)))
+  placebo_cart <- placebo.cart(x=x,delta1=delta1_aux,delta0=delta0_aux,epsilon=epsilon,wt=wt,...)
   regions <- pta.nodes(placebo_cart=placebo_cart,epsilon=epsilon)
-  catt <- catt.per.region(beta1=beta1_main,beta0=beta0_main,regions=regions)
+  regions <- as.matrix(regions[order(c(g1.rows,g0.rows)),])
   if (saveCART)
   {
-    return(list(cart=placebo_cart,regions=regions,catt=catt))
+    return(results.per.region(x,delta1_aux,delta0_aux,delta1_main,delta0_main,regions,CART=placebo_cart))
   } else
   {
-    return(list(regions=regions,catt=catt))
+    return(results.per.region(x,delta1_aux,delta0_aux,delta1_main,delta0_main,regions,CART=NULL))
   }
 }
