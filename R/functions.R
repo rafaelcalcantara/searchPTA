@@ -251,12 +251,12 @@ results.per.region <- function(x,delta1_aux,delta0_aux,delta1_main,delta0_main,r
 #' @export
 searchPTA <- function(x,delta1_aux,delta0_aux,delta1_main,delta0_main,epsilon,saveCART=TRUE,...)
 {
-  delta1_aux <- delta1_aux[x$g==1]
-  delta0_aux <- delta0_aux[x$g==0]
+  delta1_aux_temp <- delta1_aux[x$g==1]
+  delta0_aux_temp <- delta0_aux[x$g==0]
   g1.rows <- as.numeric(rownames(subset(x,g==1)))
   g0.rows <- as.numeric(rownames(subset(x,g==0)))
-  wt <- c(rep(1,length(delta1_aux)),rep(2,length(delta0_aux)))
-  placebo_cart <- placebo.cart(x=x,delta1=delta1_aux,delta0=delta0_aux,epsilon=epsilon,wt=wt,...)
+  wt <- c(rep(1,length(delta1_aux_temp)),rep(2,length(delta0_aux_temp)))
+  placebo_cart <- placebo.cart(x=x,delta1=delta1_aux_temp,delta0=delta0_aux_temp,epsilon=epsilon,wt=wt,...)
   regions <- pta.nodes(placebo_cart=placebo_cart,epsilon=epsilon)
   regions <- as.matrix(regions[order(c(g1.rows,g0.rows)),])
   if (saveCART)

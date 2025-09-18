@@ -1,0 +1,141 @@
+###############################################################################
+## Illustrations of our procedure
+###############################################################################
+# devtools::load_all()
+n <- 6000
+dependent <- FALSE ## If X depends on G
+## Generate data
+### Define parameters for each group
+mu_1 <- c(1,3,1,3)
+mu_0 <- c(1,2,3,4)
+mu <- cbind(mu_0,mu_1)
+#########
+alpha_1 <- seq(0,1,length.out = 4)
+alpha_0 <- seq(1,0,length.out = 4)
+alpha <- cbind(alpha_0, alpha_1)
+#########
+tau_1 <- c(1,2,3,4)
+tau_0 <- c(2,1,4,3)
+tau <- cbind(tau_0, tau_1)
+### Generate features
+t <- c(rep(-1,n/3),rep(0,n/3),rep(1,n/3))
+g <- rep(c(0,1),n/2)
+z <- g*(t==1)
+#########
+if (dependent)
+{
+  x1 <- runif(n/3)*g[1:(n/3)] + rbeta(n/3,3,1)*(1-g[1:(n/3)])
+  x2 <- runif(n/3)*g[1:(n/3)] + rbeta(n/3,1,3)*(1-g[1:(n/3)])
+  ## Quadrant probabilities
+  p1.g1 <- p2.g1 <- p3.g1 <- p4.g1 <- 0.25
+  p1.g0 <- pbeta(0.5,3,1)*pbeta(0.5,1,3)
+  p2.g0 <- (1-pbeta(0.5,3,1))*pbeta(0.5,1,3)
+  p3.g0 <- (1-pbeta(0.5,3,1))*(1-pbeta(0.5,1,3))
+  p4.g0 <- pbeta(0.5,3,1)*(1-pbeta(0.5,1,3))
+  #########
+  beta_1 <- c(1/p1.g1,1,1*p3.g1/(p3.g1+p4.g1),1.01*p4.g1/(p3.g1+p4.g1))
+  beta_0 <- c(7/p1.g0,1,2*p3.g0/(p3.g0+p4.g0),-5.96*p4.g0/(p3.g0+p4.g0))
+  beta <- cbind(beta_0,beta_1)
+} else
+{
+  ## Generate data
+  x1 <- runif(n/3)
+  x2 <- runif(n/3)
+  #########
+  beta_1 <- c(1,1,1,1)
+  beta_0 <- c(7,1,2,0)
+  beta <- cbind(beta_0,beta_1)
+}
+#########
+x <- rep(1,n/3)
+for (i in 1:(n/3))
+{
+  if (x1[i]>0.5 & x2[i]<0.5) x[i] <- 2
+  if (x1[i]>0.5 & x2[i]>0.5) x[i] <- 3
+  if (x1[i]<0.5 & x2[i]>0.5) x[i] <- 4
+}
+x <- c(x,x,x)
+idx <- cbind(x,g+1)
+## Generate outcome
+Ey <- mu[idx] + beta[idx]*t + tau[idx]*z + alpha[idx]*z*t
+y <- Ey + 0.2*sd(Ey)*rnorm(n)
+df <- data.frame(y,t,g,x1=c(x1,x1,x1),x2=c(x2,x2,x2))
+df_main <- subset(df,t>=0)
+df_placebo <- subset(df,t<=0)
+### Function to fit S-Learner BART with DiD regression in the leaves
+fit.bart.did <- function(df_train,df_test,features,num_trees=50,ndraws=1000,max_depth=20)
+{
+  out <- list(b1=NULL,b0=NULL)
+  df.x.train <- subset(df_train,select=features)
+  df.x.test <- subset(df_test,select=features)
+  ## Set G to (0,1)
+  df_train$g <- df_train$g - min(df_train$g)
+  df_test$g <- df_test$g - min(df_test$g)
+  ## Lists of parameters for the Stochtree BART function
+  bart.global.parmlist <- list(standardize=T,sample_sigma_global=TRUE,sigma2_global_init=0.1)
+  bart.mean.parmlist <- list(num_trees=num_trees, min_samples_leaf=20, alpha=0.95, beta=2,
+                             max_depth=max_depth, sample_sigma2_leaf=FALSE, sigma2_leaf_init = diag(rep(0.1/150,4)))
+  ## Set basis vector for leaf regressions
+  Psi <- cbind(1-df_train$g,df_train$g,(1-df_train$g)*df_train$t,df_train$g*df_train$t)
+  Psi_test <- cbind(1-df_test$g,df_test$g,(1-df_test$g)*df_test$t,df_test$g*df_test$t)
+  ## Model fit
+  bart.fit = stochtree::bart(X_train=df.x.train, y_train=df_train$y,
+                             leaf_basis_train = Psi, mean_forest_params=bart.mean.parmlist,
+                             general_params=bart.global.parmlist,
+                             num_mcmc=ndraws,num_gfr=50)
+  ## Extract beta for g=1 and g=0
+  ### We use the 'predict_raw' function from the bart.fit object
+  ### 1) Pre-process test data to the format expected by the predict_raw function
+  X_test <- stochtree::preprocessPredictionData(df.x.test,bart.fit$train_set_metadata)
+  ### 2) Create 'ForestDataset' structure to be read by the predict_raw function
+  X_test <- stochtree::createForestDataset(X_test,basis=Psi_test)
+  ### 3) Use predict_raw to extract betas for each group. Because the basis is (1,g,t,g*t), we need the 3rd and 4th coefficients
+  betas <- bart.fit$mean_forests$predict_raw(X_test)
+  ### 4) Save results; the predict_raw output is a (n,p,m) array, where n=num_obs, p is the length of the basis vector, m is the number of MCMC samples
+  #### Extracting betas[,3,] gives us a n*m matrix of individual draws for the coefficient on t, and similarly betas[,4,] for g*t
+  #### The raw predictions need to be scaled back to match the actual data (i.e. the raw predictions are based on (Y-Y_bar)/sd(Y))
+  #### Note that, because those two coefficients represent differences, the Y_bar term cancels out and we only need to multiply by sd(Y):
+  #### E.g. the coefficient on t is equal to E[(Y-Y_bar)/sd(Y)|X=x,G=0,T=1]-E[(Y-Y_bar)/sd(Y)|X=x,G=0,T=0] = (E[Y|X=x,G=0,T=1]-E[Y|X=x,G=0,T=0])/sd(Y)
+  out$b1 <- betas[,4,]*sd(df_train$y)
+  out$b0 <- betas[,3,]*sd(df_train$y)
+  return(out)
+}
+## Obtain \beta_1 and \beta_0 placebo predictions for main data
+ndraws <- 1000
+bart_placebo <- fit.bart.did(df_placebo,df_main,ndraws = ndraws,4:5)
+## Obtain \hat{\tau} for main regression:
+bart_main <- fit.bart.did(df_main,df_main,ndraws = ndraws,4:5)
+######
+epsilon <- 1
+cp <- 0
+minsplit <- 20
+out <- vector("list",length=ndraws)
+for (draw in 1:length(out))
+{
+  out[[draw]] <- searchPTA::searchPTA(x=subset(df_main,t==1,select=c("x1","x2","g")),delta1_aux=bart_placebo$b1[,draw],delta0_aux=bart_placebo$b0[,draw],delta1_main=bart_main$b1[,draw],delta0_main=bart_main$b0[,draw],epsilon=epsilon,saveCART = TRUE,cp=cp,minsplit=minsplit)
+}
+######
+catt.post <- matrix(NA,nrow=n/3,ncol=ndraws)
+
+for (i in 1:ncol(catt.hat))
+{
+  temp <- out[[i]]
+  temp <- sapply(1:ncol(temp$regions), function(j) ifelse(temp$regions[,j],temp$catt[j],NA))
+  temp <- apply(temp,1, function(j) ifelse(sum(is.na(j))==length(j),NA,sum(j,na.rm=T)))
+  catt.post[,i] <- temp
+}
+
+catt.hat <- t(apply(catt.post,1, function(i) c(mean(i,na.rm=T),quantile(i,c(0.025,0.975),na.rm=T))))
+
+true.catt <- (tau1+alpha1)[complete.cases(catt.hat)]
+catt.hat <- catt.hat[complete.cases(catt.hat),]
+
+catt.hat <- catt.hat[order(true.catt),]
+true.catt <- sort(true.catt)
+
+plot.mat <- cbind(catt.hat,true.catt)
+
+matplot(plot.mat[,c(1,4)],type=c("l","l"), col=c(rep("blue",1),"red"),lwd=c(1,1.5),lty=c(1,1))
+
+plot(plot.mat[,4],plot.mat[,1],bty="n",xlab="True",ylab="Estimated",main="CATT")
+abline(a=0,b=1)
