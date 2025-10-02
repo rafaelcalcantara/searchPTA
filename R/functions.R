@@ -90,31 +90,6 @@ cart_split <- function(y,x,epsilon)
     w1 <- w/sum(w) + (1-w)/sum(1-w)
 
     if (continuous) {
-      # continuous x variable
-      # Calculate sum-of-squares
-      ## G=1
-      # temp <- cumsum(y1*w)[-n]
-      # left.wt  <- cumsum(w)[-n]
-      # right.wt <- n - left.wt
-      # lmean1 <- temp/left.wt
-      # rmean1 <- -temp/right.wt
-      # ## If weight was 0, we get Inf for mean; it should be 0, as up until that point in the cumsum,
-      # ## the unit still had g==0 (conv. g==1). Set it to 0
-      # lmean1[is.nan(lmean1)] <- 0
-      # rmean1[is.nan(rmean1)] <- 0
-      # goodness <- (left.wt*lmean1^2 + right.wt*rmean1^2)/(sum((y1*w)^2)/sum(w) + sum((y1*(1-w))^2)/sum(1-w))
-      # ## G=0
-      # temp <- cumsum(y0*w)[-n]
-      # left.wt  <- cumsum(1-w)[-n]
-      # right.wt <- n - left.wt
-      # lmean0 <- temp/left.wt
-      # rmean0 <- -temp/right.wt
-      # ## If weight was 0, we get Inf for mean; it should be 0, as up until that point in the cumsum,
-      # ## the unit still had g==0 (conv. g==1). Set it to 0
-      # lmean0[is.nan(lmean0)] <- 0
-      # rmean0[is.nan(rmean0)] <- 0
-      # goodness <- goodness + (left.wt*lmean0^2 + right.wt*rmean0^2)/(sum((y1*w)^2)/sum(w) + sum((y1*(1-w))^2)/sum(1-w))
-      ## Add term for difference in delta means
       temp1 <- cumsum(y*w)/cumsum(w)
       temp0 <- cumsum(y*(1-w))/cumsum(1-w)
       temp3 <- (sum(y*w)-cumsum(y*w))/(sum(w)-cumsum(w))
