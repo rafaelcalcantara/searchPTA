@@ -1,8 +1,8 @@
 ###############################################################################
 ## Illustrations of our procedure
 ###############################################################################
-# devtools::load_all()
-n <- 6000
+devtools::load_all()
+n <- 600
 dependent <- FALSE ## If X depends on G
 ## Generate data
 ### Define parameters for each group
