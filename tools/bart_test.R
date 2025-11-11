@@ -1,141 +1,224 @@
-###############################################################################
-## Illustrations of our procedure
-###############################################################################
+## Setup-----------------------------------------------------------------------
 # devtools::load_all()
-n <- 6000
-dependent <- FALSE ## If X depends on G
-## Generate data
-### Define parameters for each group
-mu_1 <- c(1,3,1,3)
-mu_0 <- c(1,2,3,4)
-mu <- cbind(mu_0,mu_1)
-#########
-alpha_1 <- seq(0,1,length.out = 4)
-alpha_0 <- seq(1,0,length.out = 4)
-alpha <- cbind(alpha_0, alpha_1)
-#########
-tau_1 <- c(1,2,3,4)
-tau_0 <- c(2,1,4,3)
-tau <- cbind(tau_0, tau_1)
-### Generate features
-t <- c(rep(-1,n/3),rep(0,n/3),rep(1,n/3))
-g <- rep(c(0,1),n/2)
-z <- g*(t==1)
-#########
-if (dependent)
+# library(searchPTA)
+# seed <- 007
+n <- 1000
+# set.seed(seed)
+## Toggles for which case to run
+continuous <- FALSE
+discrete <- TRUE
+## Continuous X----------------------------------------------------------------
+# For this example, we generate two continuous features X_1,X_2 \in [0,1]
+# We define the PTA regions as:
+# S_1: X_1 < 0.5 & X_2 < 0.5
+# S_2: X_2 > 0.5
+# We make the points in region S_1 more dispersed while the points in region S_2
+# are more concentrated near the center of that region
+# This is to highlight that, with continuous X, having many 'border' points can
+# cause trouble: if beta_1 and beta_0 are continuous, points near the PTA regions
+# will have beta_1-beta_0 \approx 0, so the risk of misclassification is higher,
+# implying that our predictions might borrow too much from unidentified regions
+if (continuous)
 {
-  x1 <- runif(n/3)*g[1:(n/3)] + rbeta(n/3,3,1)*(1-g[1:(n/3)])
-  x2 <- runif(n/3)*g[1:(n/3)] + rbeta(n/3,1,3)*(1-g[1:(n/3)])
-  ## Quadrant probabilities
-  p1.g1 <- p2.g1 <- p3.g1 <- p4.g1 <- 0.25
-  p1.g0 <- pbeta(0.5,3,1)*pbeta(0.5,1,3)
-  p2.g0 <- (1-pbeta(0.5,3,1))*pbeta(0.5,1,3)
-  p3.g0 <- (1-pbeta(0.5,3,1))*(1-pbeta(0.5,1,3))
-  p4.g0 <- pbeta(0.5,3,1)*(1-pbeta(0.5,1,3))
-  #########
-  beta_1 <- c(1/p1.g1,1,1*p3.g1/(p3.g1+p4.g1),1.01*p4.g1/(p3.g1+p4.g1))
-  beta_0 <- c(7/p1.g0,1,2*p3.g0/(p3.g0+p4.g0),-5.96*p4.g0/(p3.g0+p4.g0))
-  beta <- cbind(beta_0,beta_1)
-} else
-{
-  ## Generate data
-  x1 <- runif(n/3)
-  x2 <- runif(n/3)
-  #########
-  beta_1 <- c(1,1,1,1)
-  beta_0 <- c(7,1,2,0)
-  beta <- cbind(beta_0,beta_1)
+  ### Generate data--------------------------------------------------------------
+  #### Fixed features
+  t <- c(rep(-1,n),rep(0,n),rep(1,n))
+  n1 <- n %/% 2
+  n0 <- n-n1
+  g <- c(rep(1,n1),rep(0,n0))
+  z <- c(g,g,g)*(t==1)
+  #### Generate X
+  sig.x <- 0.02
+  s1.g1 <- cbind(rnorm(n,0.2,sig.x),rnorm(n,0.2,sig.x))
+  s2.g1 <- cbind(rnorm(n,0.45,0.05),rnorm(n,0.7,sig.x))
+  snull.g1 <- cbind(rnorm(n,0.7,sig.x),rnorm(n,0.2,sig.x))
+  s1.g0 <- cbind(rnorm(n,0.3,sig.x),rnorm(n,0.3,sig.x))
+  s2.g0 <- cbind(rnorm(n,0.55,0.05),rnorm(n,0.8,sig.x))
+  snull.g0 <- cbind(rnorm(n,0.8,sig.x),rnorm(n,0.3,sig.x))
+  regions <- sample(1:3,n,replace=TRUE)
+  x1 <- (regions==1 & g==1)*punif(s1.g1[,1]) + (regions==2 & g==1)*punif(s2.g1[,1]) + (regions==3 & g==1)*punif(snull.g1[,1]) + (regions==1 & g==0)*punif(s1.g0[,1]) + (regions==2 & g==0)*punif(s2.g0[,1]) + (regions==3 & g==0)*punif(snull.g0[,1])
+  x2 <- (regions==1 & g==1)*punif(s1.g1[,2]) + (regions==2 & g==1)*punif(s2.g1[,2]) + (regions==3 & g==1)*punif(snull.g1[,2]) + (regions==1 & g==0)*punif(s1.g0[,2]) + (regions==2 & g==0)*punif(s2.g0[,2]) + (regions==3 & g==0)*punif(snull.g0[,2])
+  x <- rep(2,n)
+  for (i in 1:n)
+  {
+    if (x1[i]>0.5 & x2[i]<0.5) x[i] <- 1
+    if (x1[i]>0.5 & x2[i]>0.5) x[i] <- 3
+    if (x1[i]<0.5 & x2[i]>0.5) x[i] <- 4
+  }
+  #### Define functions for each group
+  ##### 1) mu
+  mu_1 <- 0.7*sin(1.5*pi*x1) + exp(x2)
+  mu_0 <- 0.8*log(0.5+x1) + pnorm(x2,0.5,0.25)
+  ##### 2) beta
+  beta_1 <- cos(0.5*pi*x1) + 3*log(x2+0.5)
+  beta_0 <- (x2+0.5)^3 - (x1+0.5)^2
+  ##### Demeaning beta in the right regions
+  beta_1_avg_2 <- mean(beta_1[g==1 & x==2])
+  beta_0_avg_2 <- mean(beta_0[g==0 & x==2])
+  beta_1_avg_34 <- mean(beta_1[g==1 & x %in% 3:4])
+  beta_0_avg_34 <- mean(beta_0[g==0 & x %in% 3:4])
+  beta_1 <- beta_1 - (x==2 & g==1)*(beta_1_avg_2-beta_0_avg_2) - (x %in% 3:4)*(beta_1_avg_34-beta_0_avg_34)
+  ##### Checking that betas average to 0 in the right regions
+  mean(beta_1[g==1 & x==2])-mean(beta_0[g==0 & x==2])
+  mean(beta_1[g==1 & x %in% 3:4])-mean(beta_0[g==0 & x %in% 3:4])
+  ##### 3) gamma
+  rho <- 2
+  gamma_1 <- beta_1*rho
+  gamma_0 <- beta_0*rho
+  ##### Checking that gammas average to 0 in the right regions
+  mean(gamma_1[g==1 & x==2])-mean(gamma_0[g==0 & x==2])
+  mean(gamma_1[g==1 & x %in% 3:4])-mean(gamma_0[g==0 & x %in% 3:4])
+  ##### 4) alpha
+  alpha_1 <- sqrt(x1) + x2
+  alpha_0 <- 2/(5+0.2*exp(5*x1)) + 0.7*(x2+0.3)^2
+  ##### 5) tau
+  tau_1 <- pnorm(x1,0.5,0.2) + sin(pi*x2)
+  tau_0 <- 0.4*x1^2 + 0.25*cos(0.75*pi*x2)
+  ##### Scaling tau and alpha
+  tau_1 <- tau_1/max(tau_1)*mean(mu_1)*0.5
+  tau_0 <- tau_0/max(tau_0)*mean(mu_0)*0.5
+  alpha_1 <- alpha_1/max(alpha_1)*mean(mu_1)*0.5
+  alpha_0 <- alpha_0/max(alpha_0)*mean(mu_0)*0.5
+  ### Perform CART search with true functions------------------------------------
+  bta1 <- beta_1+tau_1+alpha_1
+  ## Set epsilon value; for this, we look at quantiles of the gamma_1-gamma_0 distribution
+  ### We use the values of gamma here because beta_1 is not identified
+  epsilon <- quantile(abs(gamma_1-gamma_0),0)
+  ## Perform CART search
+  X <- data.frame(X1=x1,X2=x2,g=g)
+  # X <- data.frame(X=factor(x,ordered=TRUE),g=g)
+  catt_region <- searchPTA::searchPTA(x=X,delta1_aux=gamma_1,delta0_aux=gamma_0,delta1_main=bta1,delta0_main=beta_0,epsilon=epsilon,minsplit=1,minbucket=1,cp=0)
+  ### Plot regions
+  col <- rep(NA,nrow(catt_region$regions))
+  for (i in 1:length(col))
+  {
+    temp <- which(catt_region$regions[i,])
+    if (length(temp)==0) temp <- 1
+    else temp <- temp+1
+    col[i] <- temp
+  }
+  plot(x1,x2,type="n",cex.axis=0.7,xlab=bquote(X[1]),ylab=bquote(X[2]),xlim=c(0,1),ylim=c(0,1))
+  abline(v=0.5,h=0.5,lwd=0.5)
+  points(x1,x2,bg=col,cex=0.7,cex.axis=0.7,pch=21,xlab=bquote(X[1]),ylab=bquote(X[2]))
 }
-#########
-x <- rep(1,n/3)
-for (i in 1:(n/3))
+## Discrete X------------------------------------------------------------------
+if (discrete)
 {
-  if (x1[i]>0.5 & x2[i]<0.5) x[i] <- 2
-  if (x1[i]>0.5 & x2[i]>0.5) x[i] <- 3
-  if (x1[i]<0.5 & x2[i]>0.5) x[i] <- 4
+  ### Generate data--------------------------------------------------------------
+  #### Fixed features
+  t <- c(rep(-1,n),rep(0,n),rep(1,n))
+  n1 <- n %/% 2
+  n0 <- n-n1
+  g <- c(rep(1,n1),rep(0,n0))
+  z <- c(g,g,g)*(t==1)
+  #### Generate X
+  sig.x <- 0.1
+  s1.g1 <- cbind(rnorm(n,0.2,sig.x),rnorm(n,0.2,sig.x))
+  s2.g1 <- cbind(rnorm(n,0.45,0.05),rnorm(n,0.7,sig.x))
+  snull.g1 <- cbind(rnorm(n,0.7,sig.x),rnorm(n,0.2,sig.x))
+  s1.g0 <- cbind(rnorm(n,0.3,sig.x),rnorm(n,0.3,sig.x))
+  s2.g0 <- cbind(rnorm(n,0.55,0.05),rnorm(n,0.8,sig.x))
+  snull.g0 <- cbind(rnorm(n,0.8,sig.x),rnorm(n,0.3,sig.x))
+  regions <- sample(1:3,n,replace=TRUE)
+  x1 <- (regions==1 & g==1)*punif(s1.g1[,1]) + (regions==2 & g==1)*punif(s2.g1[,1]) + (regions==3 & g==1)*punif(snull.g1[,1]) + (regions==1 & g==0)*punif(s1.g0[,1]) + (regions==2 & g==0)*punif(s2.g0[,1]) + (regions==3 & g==0)*punif(snull.g0[,1])
+  x2 <- (regions==1 & g==1)*punif(s1.g1[,2]) + (regions==2 & g==1)*punif(s2.g1[,2]) + (regions==3 & g==1)*punif(snull.g1[,2]) + (regions==1 & g==0)*punif(s1.g0[,2]) + (regions==2 & g==0)*punif(s2.g0[,2]) + (regions==3 & g==0)*punif(snull.g0[,2])
+  x1.raw <- x1
+  x2.raw <- x2
+  ncat <- 3
+  x1 <- (floor(x1*ncat))/ncat
+  x2 <- (floor(x2*ncat))/ncat
+  # x1.round <- round(x1,1)
+  # x2.round <- round(x2,1)
+  # x1 <- floor(x1*10)/10
+  # x2 <- floor(x2*10)/10
+  x <- rep(2,n)
+  for (i in 1:n)
+  {
+    # if (x1[i]>0.5 & x2[i]<0.5) x[i] <- 1
+    # if (x1[i]>0.5 & x2[i]>=0.5) x[i] <- 3
+    # if (x1[i]<=0.5 & x2[i]>=0.5) x[i] <- 4
+    #####
+    # if (x1[i]==0.5 & x2[i]==0) x[i] <- 1
+    # if (x1[i]==0.5 & x2[i]==0.5) x[i] <- 3
+    # if (x1[i]==0 & x2[i]==0.5) x[i] <- 4
+    #####
+    if (x1[i]>0.5 & x2[i]<0.5) x[i] <- 1
+    if (x1[i]<0.5 & x2[i]>=0.5) x[i] <- 3
+    if (x1[i]>=0.5 & x2[i]>=0.5) x[i] <- 4
+  }
+  # x1 <- floor(x1/0.25)
+  # x2 <- floor(x2/0.25)
+  #### Define functions for each group
+  ##### 1) mu
+  mu_1 <- 0.7*sin(1.5*pi*x1) + exp(x2)
+  mu_0 <- 0.8*log(0.5+x1) + pnorm(x2,0.5,0.25)
+  ##### 2) beta
+  beta_1 <- cos(0.5*pi*x1) + 3*log(x2+0.5)
+  beta_0 <- (x2+0.5)^3 - (x1+0.5)^2
+  ##### Demeaning beta in the right regions
+  beta_1_avg_2 <- mean(beta_1[g==1 & x==2])
+  beta_0_avg_2 <- mean(beta_0[g==0 & x==2])
+  beta_1_avg_34 <- mean(beta_1[g==1 & x %in% 3:4])
+  beta_0_avg_34 <- mean(beta_0[g==0 & x %in% 3:4])
+  beta_1 <- beta_1 - (x==2 & g==1)*(beta_1_avg_2-beta_0_avg_2) - (x %in% 3:4)*(beta_1_avg_34-beta_0_avg_34)
+  ##### Checking that betas average to 0 in the right regions
+  mean(beta_1[g==1 & x==2])-mean(beta_0[g==0 & x==2])
+  mean(beta_1[g==1 & x %in% 3:4])-mean(beta_0[g==0 & x %in% 3:4])
+  ##### 3) gamma
+  rho <- 2
+  gamma_1 <- beta_1*rho
+  gamma_0 <- beta_0*rho
+  ##### Checking that gammas average to 0 in the right regions
+  mean(gamma_1[g==1 & x==2])-mean(gamma_0[g==0 & x==2])
+  mean(gamma_1[g==1 & x %in% 3:4])-mean(gamma_0[g==0 & x %in% 3:4])
+  ##### 4) alpha
+  alpha_1 <- sqrt(x1) + x2
+  alpha_0 <- 2/(5+0.2*exp(5*x1)) + 0.7*(x2+0.3)^2
+  ##### 5) tau
+  tau_1 <- pnorm(x1,0.5,0.2) + sin(pi*x2)
+  tau_0 <- 0.4*x1^2 + 0.25*cos(0.75*pi*x2)
+  ##### Scaling tau and alpha
+  tau_1 <- tau_1/max(tau_1)*mean(mu_1)*0.5
+  tau_0 <- tau_0/max(tau_0)*mean(mu_0)*0.5
+  alpha_1 <- alpha_1/max(alpha_1)*mean(mu_1)*0.5
+  alpha_0 <- alpha_0/max(alpha_0)*mean(mu_0)*0.5
+  ### Perform CART search with true functions------------------------------------
+  bta1 <- beta_1+tau_1+alpha_1
+  ## Set epsilon value; for this, we look at quantiles of the gamma_1-gamma_0 distribution
+  ### We use the values of gamma here because beta_1 is not identified
+  epsilon <- quantile(abs(gamma_1-gamma_0),0)
+  # epsilon <- 0.05
+  ## Perform CART search
+  par(mfrow=c(2,2))
+  for (i in 1:4)
+  {
+    # i <- ifelse(j%%2==0,2,4)
+    if (i==1) {X <- data.frame(X1=factor(x1,ordered=FALSE),X2=factor(x2,ordered=FALSE),g=g); title <- "rounded X, unordered factor"}
+    if (i==2) {X <- data.frame(X1=factor(x1,ordered=TRUE),X2=factor(x2,ordered=TRUE),g=g); title <- "rounded X, ordered factor"}
+    if (i==3) {X <- data.frame(X1=x1.raw,X2=x2.raw,g=g); title <- "raw continuous X"}
+    if (i==4) {X <- data.frame(X1=x1,X2=x2,g=g); title <- "rounded X, numeric"}
+    if (i==5) {X <- data.frame(X=factor(x,ordered=FALSE),g=g); title <- "true regions, unordered factor"}
+    if (i==6) {X <- data.frame(X=factor(x,ordered=TRUE),g=g); title <- "true regions, ordered factor"}
+    catt_region <- searchPTA::searchPTA(x=X,delta1_aux=gamma_1,delta0_aux=gamma_0,delta1_main=bta1,delta0_main=beta_0,epsilon=epsilon,minsplit=1,minbucket=1,cp=0)
+    if (i==1) CART <- catt_region$cart
+    ### Plot regions
+    col <- rep(NA,nrow(catt_region$regions))
+    for (i in 1:length(col))
+    {
+      temp <- which(catt_region$regions[i,])
+      if (length(temp)==0) temp <- 1
+      else temp <- temp+1
+      col[i] <- temp
+    }
+    shapes <- rep(21,n)
+    for (i in 1:n)
+    {
+      if (x[i]==2) shapes[i] <- 22
+      if (x[i] %in% 3:4) shapes[i] <- 24
+    }
+    plot(x1,x2,type="n",cex.axis=0.7,xlab=bquote(X[1]),ylab=bquote(X[2]),xlim=c(-0.05,0.05)+quantile(x1,c(0,1)),ylim=c(-0.05,0.05)+quantile(x2,c(0,1)),main=title,cex.main=0.7)
+    points(x1,x2,bg=col,cex=0.7,cex.axis=0.7,pch=shapes,xlab=bquote(X[1]),ylab=bquote(X[2]))
+  }
+  # par(mfrow=c(1,1))
+  # rpart.plot::rpart.plot(CART)
 }
-x <- c(x,x,x)
-idx <- cbind(x,g+1)
-## Generate outcome
-Ey <- mu[idx] + beta[idx]*t + tau[idx]*z + alpha[idx]*z*t
-y <- Ey + 0.2*sd(Ey)*rnorm(n)
-df <- data.frame(y,t,g,x1=c(x1,x1,x1),x2=c(x2,x2,x2))
-df_main <- subset(df,t>=0)
-df_placebo <- subset(df,t<=0)
-### Function to fit S-Learner BART with DiD regression in the leaves
-fit.bart.did <- function(df_train,df_test,features,num_trees=50,ndraws=1000,max_depth=20)
-{
-  out <- list(b1=NULL,b0=NULL)
-  df.x.train <- subset(df_train,select=features)
-  df.x.test <- subset(df_test,select=features)
-  ## Set G to (0,1)
-  df_train$g <- df_train$g - min(df_train$g)
-  df_test$g <- df_test$g - min(df_test$g)
-  ## Lists of parameters for the Stochtree BART function
-  bart.global.parmlist <- list(standardize=T,sample_sigma_global=TRUE,sigma2_global_init=0.1)
-  bart.mean.parmlist <- list(num_trees=num_trees, min_samples_leaf=20, alpha=0.95, beta=2,
-                             max_depth=max_depth, sample_sigma2_leaf=FALSE, sigma2_leaf_init = diag(rep(0.1/150,4)))
-  ## Set basis vector for leaf regressions
-  Psi <- cbind(1-df_train$g,df_train$g,(1-df_train$g)*df_train$t,df_train$g*df_train$t)
-  Psi_test <- cbind(1-df_test$g,df_test$g,(1-df_test$g)*df_test$t,df_test$g*df_test$t)
-  ## Model fit
-  bart.fit = stochtree::bart(X_train=df.x.train, y_train=df_train$y,
-                             leaf_basis_train = Psi, mean_forest_params=bart.mean.parmlist,
-                             general_params=bart.global.parmlist,
-                             num_mcmc=ndraws,num_gfr=50)
-  ## Extract beta for g=1 and g=0
-  ### We use the 'predict_raw' function from the bart.fit object
-  ### 1) Pre-process test data to the format expected by the predict_raw function
-  X_test <- stochtree::preprocessPredictionData(df.x.test,bart.fit$train_set_metadata)
-  ### 2) Create 'ForestDataset' structure to be read by the predict_raw function
-  X_test <- stochtree::createForestDataset(X_test,basis=Psi_test)
-  ### 3) Use predict_raw to extract betas for each group. Because the basis is (1,g,t,g*t), we need the 3rd and 4th coefficients
-  betas <- bart.fit$mean_forests$predict_raw(X_test)
-  ### 4) Save results; the predict_raw output is a (n,p,m) array, where n=num_obs, p is the length of the basis vector, m is the number of MCMC samples
-  #### Extracting betas[,3,] gives us a n*m matrix of individual draws for the coefficient on t, and similarly betas[,4,] for g*t
-  #### The raw predictions need to be scaled back to match the actual data (i.e. the raw predictions are based on (Y-Y_bar)/sd(Y))
-  #### Note that, because those two coefficients represent differences, the Y_bar term cancels out and we only need to multiply by sd(Y):
-  #### E.g. the coefficient on t is equal to E[(Y-Y_bar)/sd(Y)|X=x,G=0,T=1]-E[(Y-Y_bar)/sd(Y)|X=x,G=0,T=0] = (E[Y|X=x,G=0,T=1]-E[Y|X=x,G=0,T=0])/sd(Y)
-  out$b1 <- betas[,4,]*sd(df_train$y)
-  out$b0 <- betas[,3,]*sd(df_train$y)
-  return(out)
-}
-## Obtain \beta_1 and \beta_0 placebo predictions for main data
-ndraws <- 1000
-bart_placebo <- fit.bart.did(df_placebo,df_main,ndraws = ndraws,4:5)
-## Obtain \hat{\tau} for main regression:
-bart_main <- fit.bart.did(df_main,df_main,ndraws = ndraws,4:5)
-######
-epsilon <- 1
-cp <- 0
-minsplit <- 20
-out <- vector("list",length=ndraws)
-for (draw in 1:length(out))
-{
-  out[[draw]] <- searchPTA::searchPTA(x=subset(df_main,t==1,select=c("x1","x2","g")),delta1_aux=bart_placebo$b1[,draw],delta0_aux=bart_placebo$b0[,draw],delta1_main=bart_main$b1[,draw],delta0_main=bart_main$b0[,draw],epsilon=epsilon,saveCART = TRUE,cp=cp,minsplit=minsplit)
-}
-######
-catt.post <- matrix(NA,nrow=n/3,ncol=ndraws)
-
-for (i in 1:ncol(catt.hat))
-{
-  temp <- out[[i]]
-  temp <- sapply(1:ncol(temp$regions), function(j) ifelse(temp$regions[,j],temp$catt[j],NA))
-  temp <- apply(temp,1, function(j) ifelse(sum(is.na(j))==length(j),NA,sum(j,na.rm=T)))
-  catt.post[,i] <- temp
-}
-
-catt.hat <- t(apply(catt.post,1, function(i) c(mean(i,na.rm=T),quantile(i,c(0.025,0.975),na.rm=T))))
-
-true.catt <- (tau1+alpha1)[complete.cases(catt.hat)]
-catt.hat <- catt.hat[complete.cases(catt.hat),]
-
-catt.hat <- catt.hat[order(true.catt),]
-true.catt <- sort(true.catt)
-
-plot.mat <- cbind(catt.hat,true.catt)
-
-matplot(plot.mat[,c(1,4)],type=c("l","l"), col=c(rep("blue",1),"red"),lwd=c(1,1.5),lty=c(1,1))
-
-plot(plot.mat[,4],plot.mat[,1],bty="n",xlab="True",ylab="Estimated",main="CATT")
-abline(a=0,b=1)

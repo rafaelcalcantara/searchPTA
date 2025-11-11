@@ -90,31 +90,6 @@ cart_split <- function(y,x,epsilon)
     w1 <- w/sum(w) + (1-w)/sum(1-w)
 
     if (continuous) {
-      # continuous x variable
-      # Calculate sum-of-squares
-      ## G=1
-      # temp <- cumsum(y1*w)[-n]
-      # left.wt  <- cumsum(w)[-n]
-      # right.wt <- n - left.wt
-      # lmean1 <- temp/left.wt
-      # rmean1 <- -temp/right.wt
-      # ## If weight was 0, we get Inf for mean; it should be 0, as up until that point in the cumsum,
-      # ## the unit still had g==0 (conv. g==1). Set it to 0
-      # lmean1[is.nan(lmean1)] <- 0
-      # rmean1[is.nan(rmean1)] <- 0
-      # goodness <- (left.wt*lmean1^2 + right.wt*rmean1^2)/(sum((y1*w)^2)/sum(w) + sum((y1*(1-w))^2)/sum(1-w))
-      # ## G=0
-      # temp <- cumsum(y0*w)[-n]
-      # left.wt  <- cumsum(1-w)[-n]
-      # right.wt <- n - left.wt
-      # lmean0 <- temp/left.wt
-      # rmean0 <- -temp/right.wt
-      # ## If weight was 0, we get Inf for mean; it should be 0, as up until that point in the cumsum,
-      # ## the unit still had g==0 (conv. g==1). Set it to 0
-      # lmean0[is.nan(lmean0)] <- 0
-      # rmean0[is.nan(rmean0)] <- 0
-      # goodness <- goodness + (left.wt*lmean0^2 + right.wt*rmean0^2)/(sum((y1*w)^2)/sum(w) + sum((y1*(1-w))^2)/sum(1-w))
-      ## Add term for difference in delta means
       temp1 <- cumsum(y*w)/cumsum(w)
       temp0 <- cumsum(y*(1-w))/cumsum(1-w)
       temp3 <- (sum(y*w)-cumsum(y*w))/(sum(w)-cumsum(w))
@@ -129,26 +104,34 @@ cart_split <- function(y,x,epsilon)
       goodness <- goodness[-n] + delta.diff[-n]
       goodness <- ifelse(is.na(goodness),0,goodness)
       ## Store results
-      list(goodness= goodness, direction=rep(-1,n-1))
+      list(goodness=goodness, direction=rep(-1,n-1))
     }
     else {
       # Categorical X variable
       ux <- sort(unique(x))
-      wtsum <- tapply(wt, x, sum)
-      ysum  <- tapply(y*wt, x, sum)
-      means <- ysum/wtsum
+      wsum <- tapply(w1, x, sum)
+      ysum  <- tapply(y*w1, x, sum)
+      means <- ysum/wsum
 
       # For anova splits, we can order the categories by their means
       #  then use the same code as for a non-categorical
       ord <- order(means)
       n <- length(ord)
-      temp <- cumsum(ysum[ord])[-n]
-      left.wt  <- cumsum(wtsum[ord])[-n]
-      right.wt <- sum(wt) - left.wt
-      lmean <- temp/left.wt
-      rmean <- -temp/right.wt
-      list(goodness= (left.wt*lmean^2 + right.wt*rmean^2)/sum(wt*y^2)  + n*var(y)*((abs(rmean+ym) < epsilon) | (abs(lmean+ym) < epsilon))  ,
-           direction = ux[ord])
+      temp1 <- cumsum(ysum[ord]*wsum[ord])/cumsum(wsum[ord])
+      temp0 <- cumsum(ysum[ord]*(1-wsum[ord]))/cumsum(1-wsum[ord])
+      temp3 <- (sum(ysum[ord]*wsum[ord])-cumsum(ysum[ord]*wsum[ord]))/(sum(wsum[ord])-cumsum(wsum[ord]))
+      temp2 <- (sum(ysum[ord]*(1-wsum[ord]))-cumsum(ysum[ord]*(1-wsum[ord])))/(sum(1-wsum[ord])-cumsum(1-wsum[ord]))
+      lmean <- temp1+temp0
+      rmean <- temp3+temp2
+      ####
+      ym <- sum(y*w1)
+      goodness <- ((lmean-ym)^2 + (rmean-ym)^2)/(sum((y-ym)^2))
+      ####
+      delta.diff <- n*var(y)*((abs(rmean) < epsilon) | (abs(lmean) < epsilon))
+      goodness <- goodness[-n] + delta.diff[-n]
+      goodness <- ifelse(is.na(goodness),0,goodness)
+      ## Store results
+      list(goodness=goodness, direction=ux[ord])
     }
   }
   ### 4) List to be passed on to the rpart function with our custom splitting criteria
@@ -169,10 +152,24 @@ placebo.cart <- function(x,delta1,delta0,epsilon,wt,...)
 {
   ## Define output
   y <- c(delta1,-delta0)
-  ## Adjust X format (e.g. one-hot encode levels of factors etc.)
-  xm <- model.matrix(~.-1, data = rbind(subset(x,g==1,select=which(names(x)!="g")),subset(x,g==0,select=which(names(x)!="g"))))
-  ## data.frame with y,x
-  xm <- data.frame(y,x = xm)
+  ## Adjust X format
+  ### We keep numeric variables and ordered factor variables and one-hot encode unordered factor variables
+  ### This implies that all variables will be evaluated using the continuous split criteria. This is the rpart
+  #### default for numeric and ordered factors, but not for unordered factors, for which there is a different routine
+  #### based on ordering the factors by the mean of y per level of the factor
+  temp <- rbind(subset(x,g==1,select=which(names(x)!="g")),subset(x,g==0,select=which(names(x)!="g")))
+  unord.factors <- which(sapply(temp, function(i) is.factor(i) & !is.ordered(i)))
+  not.unord.factors <- which(sapply(temp, function(i) !is.factor(i) | is.ordered(i)))
+  if (length(unord.factors)>0)
+  {
+    ## If there are unordered categorical features
+    dummy.mat <- lapply(subset(temp,select=unord.factors),contrasts,contrasts=FALSE)
+    xm <- model.matrix(~.-1, data = subset(temp,select=unord.factors), contrasts.arg=dummy.mat)
+    xm <- data.frame(y,x=cbind(subset(temp,select=not.unord.factors),xm))
+  } else
+  {
+    xm <- data.frame(y,x=temp)
+  }
   ## Fit CART tree
   out <- rpart::rpart(y~., data = xm,method = cart_split(y,x,epsilon), weights = wt, ...)
   return(out)
