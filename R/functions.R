@@ -152,32 +152,24 @@ placebo.cart <- function(x,delta1,delta0,epsilon,wt,...)
 {
   ## Define output
   y <- c(delta1,-delta0)
-  ## Adjust X format (e.g. one-hot encode levels of factors etc.)
+  ## Adjust X format
+  ### We keep numeric variables and ordered factor variables and one-hot encode unordered factor variables
+  ### This implies that all variables will be evaluated using the continuous split criteria. This is the rpart
+  #### default for numeric and ordered factors, but not for unordered factors, for which there is a different routine
+  #### based on ordering the factors by the mean of y per level of the factor
   temp <- rbind(subset(x,g==1,select=which(names(x)!="g")),subset(x,g==0,select=which(names(x)!="g")))
-  factors <- which(sapply(temp, is.factor))
-  if (length(factors)>0)
+  unord.factors <- which(sapply(temp, function(i) is.factor(i) & !is.ordered(i)))
+  not.unord.factors <- which(sapply(temp, function(i) !is.factor(i) | is.ordered(i)))
+  if (length(unord.factors)>0)
   {
-    ## If there are categorical features
-    if (length(factors)>1)
-    {
-      dummy.mat <- lapply(temp[,factors], contrasts, contrasts=FALSE)
-      xm <- model.matrix(~.-1, data = temp, contrasts.arg=dummy.mat)
-    } else
-    {
-      dummy.mat <- contrasts(temp[,factors], contrasts=FALSE)
-      dummy.mat <- list(dummy.mat)
-      names(dummy.mat) <- names(temp)[factors]
-      xm <- model.matrix(~.-1, data = temp, contrasts.arg=dummy.mat)
-    }
+    ## If there are unordered categorical features
+    dummy.mat <- lapply(subset(temp,select=unord.factors),contrasts,contrasts=FALSE)
+    xm <- model.matrix(~.-1, data = subset(temp,select=unord.factors), contrasts.arg=dummy.mat)
+    xm <- data.frame(y,x=cbind(subset(temp,select=not.unord.factors),xm))
   } else
   {
-    ## If all features are numeric
-    xm <- model.matrix(~.-1, data = rbind(subset(x,g==1,select=which(names(x)!="g")),subset(x,g==0,select=which(names(x)!="g"))))
+    xm <- data.frame(y,x=temp)
   }
-  ## data.frame with y,x
-  if (!sapply(temp, is.ordered)[1]) xm <- data.frame(y,x = xm)
-  if (sapply(temp, is.ordered)[1]) xm <- data.frame(y,x=temp)
-  # xm <- data.frame(y,x=temp)
   ## Fit CART tree
   out <- rpart::rpart(y~., data = xm,method = cart_split(y,x,epsilon), weights = wt, ...)
   return(out)

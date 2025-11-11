@@ -2,7 +2,7 @@
 # devtools::load_all()
 # library(searchPTA)
 # seed <- 007
-n <- 10000
+n <- 1000
 # set.seed(seed)
 ## Toggles for which case to run
 continuous <- FALSE
