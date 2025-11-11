@@ -104,26 +104,34 @@ cart_split <- function(y,x,epsilon)
       goodness <- goodness[-n] + delta.diff[-n]
       goodness <- ifelse(is.na(goodness),0,goodness)
       ## Store results
-      list(goodness= goodness, direction=rep(-1,n-1))
+      list(goodness=goodness, direction=rep(-1,n-1))
     }
     else {
       # Categorical X variable
       ux <- sort(unique(x))
-      wtsum <- tapply(wt, x, sum)
-      ysum  <- tapply(y*wt, x, sum)
-      means <- ysum/wtsum
+      wsum <- tapply(w1, x, sum)
+      ysum  <- tapply(y*w1, x, sum)
+      means <- ysum/wsum
 
       # For anova splits, we can order the categories by their means
       #  then use the same code as for a non-categorical
       ord <- order(means)
       n <- length(ord)
-      temp <- cumsum(ysum[ord])[-n]
-      left.wt  <- cumsum(wtsum[ord])[-n]
-      right.wt <- sum(wt) - left.wt
-      lmean <- temp/left.wt
-      rmean <- -temp/right.wt
-      list(goodness= (left.wt*lmean^2 + right.wt*rmean^2)/sum(wt*y^2)  + n*var(y)*((abs(rmean+ym) < epsilon) | (abs(lmean+ym) < epsilon))  ,
-           direction = ux[ord])
+      temp1 <- cumsum(ysum[ord]*wsum[ord])/cumsum(wsum[ord])
+      temp0 <- cumsum(ysum[ord]*(1-wsum[ord]))/cumsum(1-wsum[ord])
+      temp3 <- (sum(ysum[ord]*wsum[ord])-cumsum(ysum[ord]*wsum[ord]))/(sum(wsum[ord])-cumsum(wsum[ord]))
+      temp2 <- (sum(ysum[ord]*(1-wsum[ord]))-cumsum(ysum[ord]*(1-wsum[ord])))/(sum(1-wsum[ord])-cumsum(1-wsum[ord]))
+      lmean <- temp1+temp0
+      rmean <- temp3+temp2
+      ####
+      ym <- sum(y*w1)
+      goodness <- ((lmean-ym)^2 + (rmean-ym)^2)/(sum((y-ym)^2))
+      ####
+      delta.diff <- n*var(y)*((abs(rmean) < epsilon) | (abs(lmean) < epsilon))
+      goodness <- goodness[-n] + delta.diff[-n]
+      goodness <- ifelse(is.na(goodness),0,goodness)
+      ## Store results
+      list(goodness=goodness, direction=ux[ord])
     }
   }
   ### 4) List to be passed on to the rpart function with our custom splitting criteria
@@ -145,9 +153,31 @@ placebo.cart <- function(x,delta1,delta0,epsilon,wt,...)
   ## Define output
   y <- c(delta1,-delta0)
   ## Adjust X format (e.g. one-hot encode levels of factors etc.)
-  xm <- model.matrix(~.-1, data = rbind(subset(x,g==1,select=which(names(x)!="g")),subset(x,g==0,select=which(names(x)!="g"))))
+  temp <- rbind(subset(x,g==1,select=which(names(x)!="g")),subset(x,g==0,select=which(names(x)!="g")))
+  factors <- which(sapply(temp, is.factor))
+  if (length(factors)>0)
+  {
+    ## If there are categorical features
+    if (length(factors)>1)
+    {
+      dummy.mat <- lapply(temp[,factors], contrasts, contrasts=FALSE)
+      xm <- model.matrix(~.-1, data = temp, contrasts.arg=dummy.mat)
+    } else
+    {
+      dummy.mat <- contrasts(temp[,factors], contrasts=FALSE)
+      dummy.mat <- list(dummy.mat)
+      names(dummy.mat) <- names(temp)[factors]
+      xm <- model.matrix(~.-1, data = temp, contrasts.arg=dummy.mat)
+    }
+  } else
+  {
+    ## If all features are numeric
+    xm <- model.matrix(~.-1, data = rbind(subset(x,g==1,select=which(names(x)!="g")),subset(x,g==0,select=which(names(x)!="g"))))
+  }
   ## data.frame with y,x
-  xm <- data.frame(y,x = xm)
+  if (!sapply(temp, is.ordered)[1]) xm <- data.frame(y,x = xm)
+  if (sapply(temp, is.ordered)[1]) xm <- data.frame(y,x=temp)
+  # xm <- data.frame(y,x=temp)
   ## Fit CART tree
   out <- rpart::rpart(y~., data = xm,method = cart_split(y,x,epsilon), weights = wt, ...)
   return(out)
