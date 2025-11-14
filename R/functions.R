@@ -101,7 +101,8 @@ cart_split <- function(y,x,epsilon)
       goodness <- ((lmean-ym)^2 + (rmean-ym)^2)/(sum((y-ym)^2))
       ####
       delta.diff <- n*var(y)*((abs(rmean) < epsilon) | (abs(lmean) < epsilon))
-      goodness <- goodness[-n] + delta.diff[-n]
+      # goodness <- goodness[-n] + delta.diff[-n]
+      goodness <- delta.diff[-n]
       goodness <- ifelse(is.na(goodness),0,goodness)
       ## Store results
       list(goodness=goodness, direction=rep(-1,n-1))
