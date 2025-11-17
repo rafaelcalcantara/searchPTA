@@ -1,7 +1,7 @@
 ## Setup-----------------------------------------------------------------------
 seed <- 007
 set.seed(seed)
-n <- 5000
+n <- 1000
 ## Generate data---------------------------------------------------------------
 ### Fixed features
 t <- c(rep(-1,n),rep(0,n),rep(1,n))
@@ -36,9 +36,9 @@ mu_fun <- function(x1,x2,g)
   ## x1 coefficient
   b <- ifelse(g==1,0.3,0.6)
   ## Return mu
-  return(a+b*x1+sin(0.75*pi*x1))
+  return(a+b*x1)
 }
-beta_fun <- function(x3,g)
+beta_fun <- function(x1,x2,x3,g)
 {
   ## Intercept
   a0 <- ifelse(x2=="large",0.4,0.1)
@@ -47,10 +47,10 @@ beta_fun <- function(x3,g)
   a <- a0+a1+a2
   ## x1 coefficient
   b <- ifelse(g==1,0.4,0.1)
-  ## Return mu
-  return(a+b*x1-exp(-5*x1))
+  ## Return beta
+  return(a+b*x1)
 }
-gamma_fun <- function(x3,g) 2*beta_fun(x3,g)
+gamma_fun <- function(x1,x2,x3,g) beta_fun(x1,x2,x3,g)
 tau_fun <- function(x2,x3)
 {
   a0 <- ifelse(x2=="large",0.1,0.8)
@@ -60,13 +60,13 @@ tau_fun <- function(x2,x3)
 alpha_fun <- function(x2)
 {
   a0 <- ifelse(x2=="large",0,0.4)
-  a1 <- ifelse(x3=="c",0.5,0)
-  return(a0+a1)
+  # a1 <- ifelse(x3=="c",0.5,0)
+  return(a0)
 }
 ### Calculate function values
 mu <- mu_fun(x1,x2,g)
-beta <- beta_fun(x3,g)
-gamma <- gamma_fun(x3,g)
+beta <- beta_fun(x1,x2,x3,g)
+gamma <- gamma_fun(x1,x2,x3,g)
 tau <- tau_fun(x2,x3)
 alpha <- alpha_fun(x2)
 ### Define PTA regions
@@ -83,14 +83,14 @@ beta_avg_2_1 <- mean(beta[S==2 & g==1])
 beta_avg_2_0 <- mean(beta[S==2 & g==0])
 beta_avg_3_1 <- mean(beta[S==3 & g==1])
 beta_avg_3_0 <- mean(beta[S==3 & g==0])
-beta <- beta - (S==1 & g==1)*(beta_avg_1_1-beta_avg_1_0) - (S==2 & g==1)*(beta_avg_2_1-beta_avg_2_0)# - (S==3 & g==1)*(beta_avg_3_1-beta_avg_3_0 - 0.2)
+beta <- beta - (S==1 & g==1)*(beta_avg_1_1-beta_avg_1_0) - (S==2 & g==1)*(beta_avg_2_1-beta_avg_2_0) - (S==3 & g==1)*(beta_avg_3_1-beta_avg_3_0 - 3)
 gamma_avg_1_1 <- mean(gamma[S==1 & g==1])
 gamma_avg_1_0 <- mean(gamma[S==1 & g==0])
 gamma_avg_2_1 <- mean(gamma[S==2 & g==1])
 gamma_avg_2_0 <- mean(gamma[S==2 & g==0])
 gamma_avg_3_1 <- mean(gamma[S==3 & g==1])
 gamma_avg_3_0 <- mean(gamma[S==3 & g==0])
-gamma <- gamma - (S==1 & g==1)*(gamma_avg_1_1-gamma_avg_1_0) - (S==2 & g==1)*(gamma_avg_2_1-gamma_avg_2_0)# - (S==3 & g==1)*(gamma_avg_3_1-gamma_avg_3_0 - 0.2)
+gamma <- gamma - (S==1 & g==1)*(gamma_avg_1_1-gamma_avg_1_0) - (S==2 & g==1)*(gamma_avg_2_1-gamma_avg_2_0) - (S==3 & g==1)*(gamma_avg_3_1-gamma_avg_3_0 - 3)
 ### Generate outcome
 Ey <- rep(mu,3) - rep(gamma,3)*(t==-1) + rep(beta,3)*(t==1) +  rep(tau,3)*z + rep(alpha,3)*z*(t==1)
 error.sd <- 0.2*sd(Ey)
@@ -181,7 +181,7 @@ abline(a=0,b=1)
 plot(rowMeans(g0)[1:n][g==0],gamma[g==0])
 abline(a=0,b=1)
 ### Second stage: apply our CART search procedure to the posterior draws of BART
-eps <- 0.01
+eps <- 0.03
 df <- data.frame(X1=x1,X2=factor(x2,ordered=TRUE),X3=factor(x3,ordered=FALSE),g=g)
 # df <- data.frame(X=S,g=g)
 cl <- makeCluster(ncores)

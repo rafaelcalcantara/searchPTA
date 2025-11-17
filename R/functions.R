@@ -61,12 +61,13 @@ points.per.region <- function(listA,listB)
 #' @param x Explanatory variable
 #' @param epsilon Parameter that dictates how close the trends between two groups needs to be for PTA to be considered valid
 #' i.e. we will consider that PTA holds in regions where delta_1 - delta_0 <= epsilon
-cart_split <- function(y,x,epsilon)
+#' @param catt DiD estimate for the pointwise CATT
+cart_split <- function(y,x)
 {
   ### 1) init function
   itemp <- function(y, offset, parms, wt) {
     if (!is.null(offset)) y <- y-offset
-    list(y=y, parms=0, numresp=1, numy=1,
+    list(y=y, parms=parms, numresp=1, numy=1,
          summary= function(yval, dev, wt, ylevel, digits ) {
            paste("  mean=", format(signif(yval, digits)),
                  ", MSE=" , format(signif(dev/wt, digits)),
@@ -84,6 +85,7 @@ cart_split <- function(y,x,epsilon)
   }
   ### 3) splitting function
   stemp <- function(y, wt, x, parms, continuous) {
+    epsilon <- parms
     # We perform the calculations per G=g
     w <- as.numeric(wt==1)
     n <- length(y)
@@ -92,8 +94,6 @@ cart_split <- function(y,x,epsilon)
     if (continuous) {
       temp1 <- cumsum(y*w)/cumsum(w)
       temp0 <- cumsum(y*(1-w))/cumsum(1-w)
-      # temp3 <- (sum(y*w)-cumsum(y*w))/(sum(w)-cumsum(w))
-      # temp2 <- (sum(y*(1-w))-cumsum(y*(1-w)))/(sum(1-w)-cumsum(1-w))
       temp3 <- (-cumsum(y*w))/(sum(w)-cumsum(w))
       temp2 <- (-cumsum(y*(1-w)))/(sum(1-w)-cumsum(1-w))
       temp0 <- ifelse(is.na(temp0),0,temp0)
@@ -157,10 +157,11 @@ cart_split <- function(y,x,epsilon)
 #' @param epsilon Parameter that dictates how close the trends between two groups needs to be for PTA to be considered valid
 #' @param cp Complexity parameter from the rpart function
 #' @param ... Additional arguments for rpart.control --- control CART tree growth
-placebo.cart <- function(x,delta1,delta0,epsilon,wt,...)
+placebo.cart <- function(x,gamma1,gamma0,bta1,beta0,epsilon,wt,...)
 {
   ## Define output
-  y <- c(delta1,-delta0)
+  y <- c(gamma1,-gamma0)
+  catt <- c(bta1,-beta0)
   ## Adjust X format
   ### We keep numeric variables and ordered factor variables and one-hot encode unordered factor variables
   ### This implies that all variables will be evaluated using the continuous split criteria. This is the rpart
@@ -174,13 +175,16 @@ placebo.cart <- function(x,delta1,delta0,epsilon,wt,...)
     ## If there are unordered categorical features
     dummy.mat <- lapply(subset(temp,select=unord.factors),contrasts,contrasts=FALSE)
     xm <- model.matrix(~.-1, data = subset(temp,select=unord.factors), contrasts.arg=dummy.mat)
-    xm <- data.frame(y,x=cbind(subset(temp,select=not.unord.factors),xm))
+    xm <- cbind(subset(temp,select=not.unord.factors),xm)
+    # xm <- rbind(xm,xm)
   } else
   {
-    xm <- data.frame(y,x=temp)
+    # xm <- rbind(temp,temp)
+    xm <- temp
   }
+  xm <- data.frame(y,x=xm)
   ## Fit CART tree
-  out <- rpart::rpart(y~., data = xm,method = cart_split(y,x,epsilon), weights = wt, ...)
+  out <- rpart::rpart(y~., data = xm,method = cart_split(y,x), weights = wt, parms=epsilon, ...)
   return(out)
 }
 #' pta.nodes
@@ -213,13 +217,7 @@ pta.nodes <- function(placebo_cart,epsilon)
   max.pta <- lapply(1:N, function(i) ind[ind %in% leaf.per.point[[i]]])
   max.pta <- lapply(max.pta, function(i) ifelse(length(i)==0,NA,max(i)))
 
-  points.in.region <- vector("list",N)
-  for (i in 1:N)
-  {
-    temp <- max.pta[[i]]
-    points.in.region[[i]] <- sapply(leaf.per.point, function(j) temp %in% j)
-  }
-
+  points.in.region <- lapply(max.pta, function(i) sapply(leaf.per.point, function(j) i %in% j))
   ## Finally, we create a N x length(ind) matrix. Each column of this matrix stores a boolean vector
   ### which equals TRUE when i crosses a given PTA region. E.g. if the columns refer to regions x = 2 and x \in {3,4}
   ### the matrix has 2 columns, one which tracks points with x=2, and one for points with x \in {3,4}.
@@ -265,10 +263,12 @@ searchPTA <- function(x,delta1_aux,delta0_aux,delta1_main,delta0_main,epsilon,sa
 {
   delta1_aux_temp <- delta1_aux[x$g==1]
   delta0_aux_temp <- delta0_aux[x$g==0]
+  delta1_main_temp <- delta1_main[x$g==1]
+  delta0_main_temp <- delta0_main[x$g==0]
   g1.rows <- as.numeric(rownames(subset(x,g==1)))
   g0.rows <- as.numeric(rownames(subset(x,g==0)))
   wt <- c(rep(1,length(delta1_aux_temp)),rep(2,length(delta0_aux_temp)))
-  placebo_cart <- placebo.cart(x=x,delta1=delta1_aux_temp,delta0=delta0_aux_temp,epsilon=epsilon,wt=wt,...)
+  placebo_cart <- placebo.cart(x=x,gamma1=delta1_aux_temp,gamma0=delta0_aux_temp,bta1=delta1_main_temp,beta0=delta0_main_temp,epsilon=epsilon,wt=wt,...)
   regions <- pta.nodes(placebo_cart=placebo_cart,epsilon=epsilon)
   # regions <- as.matrix(regions[order(c(g1.rows,g0.rows)),])
   if (saveCART)
