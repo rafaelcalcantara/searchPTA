@@ -4,21 +4,21 @@
 \alias{placebo.cart}
 \title{placebo.cart}
 \usage{
-placebo.cart(x, delta1, delta0, epsilon, wt, ...)
+placebo.cart(x, gamma1, gamma0, epsilon, wt, ...)
 }
 \arguments{
 \item{x}{Main data feature set}
 
-\item{delta1}{delta_1 prediction for main data from placebo regression}
+\item{gamma1}{gamma_1 prediction}
 
-\item{delta0}{delta_0 prediction for main data from placebo regression}
+\item{gamma0}{gamma_0 prediction}
 
 \item{epsilon}{Parameter that dictates how close the trends between two groups needs to be for PTA to be considered valid}
 
-\item{...}{Additional arguments for rpart.control --- control CART tree growth}
+\item{wt}{weight vector used for calculating the g=1 and g=0 means}
 
-\item{cp}{Complexity parameter from the rpart function}
+\item{...}{Additional arguments for rpart fit (see rpart.control)}
 }
 \description{
-Fit CART to predictions for main data from placebo regression
+Fit CART to placebo (pre-trend) predictions
 }

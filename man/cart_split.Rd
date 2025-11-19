@@ -2,17 +2,14 @@
 % Please edit documentation in R/functions.R
 \name{cart_split}
 \alias{cart_split}
-\title{custom_cart_split}
+\title{cart_split}
 \usage{
-cart_split(y, x, epsilon)
+cart_split(y, x)
 }
 \arguments{
 \item{y}{Outcome variable}
 
 \item{x}{Explanatory variable}
-
-\item{epsilon}{Parameter that dictates how close the trends between two groups needs to be for PTA to be considered valid
-i.e. we will consider that PTA holds in regions where delta_1 - delta_0 <= epsilon}
 }
 \description{
 This code is adapted from the vignette in https://github.com/cran/rpart/blob/master/tests/usersplits.R
