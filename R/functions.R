@@ -207,8 +207,6 @@ searchPTA <- function(x,gamma1,gamma0,bta1,beta0,epsilon,saveCART=TRUE,...)
   gamma0_temp <- gamma0[x$g==0]
   bta1_temp <- bta1[x$g==1]
   beta0_temp <- beta0[x$g==0]
-  g1.rows <- as.numeric(rownames(subset(x,g==1)))
-  g0.rows <- as.numeric(rownames(subset(x,g==0)))
   wt <- c(rep(1,length(gamma1_temp)),rep(2,length(gamma0_temp)))
   placebo_cart <- placebo.cart(x=x,gamma1=gamma1_temp,gamma0=gamma0_temp,epsilon=epsilon,wt=wt,...)
   return(results(x,gamma1=gamma1,gamma0=gamma0,bta1=bta1,beta0=beta0,placebo_cart=placebo_cart,epsilon=epsilon,saveCART=saveCART))
