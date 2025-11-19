@@ -20,48 +20,13 @@ get_node_paths <- function(rpart_obj) {
   names(paths) <- node_ids
   return(paths)
 }
-#' fine_part
-#'
-#' Auxiliary function to obtain the finest partition for which delta1-delta0 ~ 0 in the CART tree
-#' @param list List that contains all regions where PTA holds, from the most aggregated to most disaggregated ones
-fine_part <- function(list)
-{
-  out <- sapply(1:length(list), function(i) {
-    any(sapply((1:length(list))[-i], function(j) {
-      all(list[[i]] %in% list[[j]])
-    }))
-  })
-  return(!out)
-}
-#' points.per.region
-#'
-#' Auxiliary function to create a matrix with N rows and ncol = number of PTA regions
-#' Each column is a boolean vector of size N equal to TRUE if a point falls into the region
-#' associated to that column
-#' @param listA List of finest partitions for which PTA holds
-#' @param listB List which stores the path that reaches the leaf node of each i
-points.per.region <- function(listA,listB)
-{
-  out <- matrix(FALSE,nrow=length(listB),ncol=length(listA))
-  for (i in 1:nrow(out))
-  {
-    ind <- which(as.numeric(names(listA)) %in% listB[[i]])
-    if (length(ind)>0) out[i,ind] <- TRUE
-  }
-  colnames(out) <- names(listA)
-  rownames(out) <- names(listB)
-  return(out)
-}
-#' custom_cart_split
+#' cart_split
 #'
 #' This code is adapted from the vignette in https://github.com/cran/rpart/blob/master/tests/usersplits.R
 #' The only thing we change from that example is the splitting function (stemp), which is the focus of our approach
 #' For more details on the other functions and rpart more generally, check the vignette and package documentation
 #' @param y Outcome variable
 #' @param x Explanatory variable
-#' @param epsilon Parameter that dictates how close the trends between two groups needs to be for PTA to be considered valid
-#' i.e. we will consider that PTA holds in regions where delta_1 - delta_0 <= epsilon
-#' @param catt DiD estimate for the pointwise CATT
 cart_split <- function(y,x)
 {
   ### 1) init function
@@ -150,18 +115,17 @@ cart_split <- function(y,x)
 }
 #' placebo.cart
 #'
-#' Fit CART to predictions for main data from placebo regression
+#' Fit CART to placebo (pre-trend) predictions
 #' @param x Main data feature set
-#' @param delta1 delta_1 prediction for main data from placebo regression
-#' @param delta0 delta_0 prediction for main data from placebo regression
+#' @param gamma1 gamma_1 prediction
+#' @param gamma0 gamma_0 prediction
 #' @param epsilon Parameter that dictates how close the trends between two groups needs to be for PTA to be considered valid
-#' @param cp Complexity parameter from the rpart function
-#' @param ... Additional arguments for rpart.control --- control CART tree growth
-placebo.cart <- function(x,gamma1,gamma0,bta1,beta0,epsilon,wt,...)
+#' @param wt weight vector used for calculating the g=1 and g=0 means
+#' @param ... Additional arguments for rpart fit (see rpart.control)
+placebo.cart <- function(x,gamma1,gamma0,epsilon,wt,...)
 {
   ## Define output
   y <- c(gamma1,-gamma0)
-  catt <- c(bta1,-beta0)
   ## Adjust X format
   ### We keep numeric variables and ordered factor variables and one-hot encode unordered factor variables
   ### This implies that all variables will be evaluated using the continuous split criteria. This is the rpart
@@ -176,10 +140,8 @@ placebo.cart <- function(x,gamma1,gamma0,bta1,beta0,epsilon,wt,...)
     dummy.mat <- lapply(subset(temp,select=unord.factors),contrasts,contrasts=FALSE)
     xm <- model.matrix(~.-1, data = subset(temp,select=unord.factors), contrasts.arg=dummy.mat)
     xm <- cbind(subset(temp,select=not.unord.factors),xm)
-    # xm <- rbind(xm,xm)
   } else
   {
-    # xm <- rbind(temp,temp)
     xm <- temp
   }
   xm <- data.frame(y,x=xm)
@@ -187,95 +149,67 @@ placebo.cart <- function(x,gamma1,gamma0,bta1,beta0,epsilon,wt,...)
   out <- rpart::rpart(y~., data = xm,method = cart_split(y,x), weights = wt, parms=epsilon, ...)
   return(out)
 }
-#' pta.nodes
+#' results
 #'
-#' This function extracts the finest partitions of the data which CART flags as PTA regions
-#' and stores which points belong in each region
-#' @param placebo_cart CART tree, output from placebo.cart function
-#' @param epsilon Parameter that dictates how close the trends between two groups needs to be for PTA to be considered valid
-pta.nodes <- function(placebo_cart,epsilon)
-{
-  N <- length(placebo_cart$y)
-  ## Determine which nodes have b1-b0 close enough to zero
-  ind <- which(abs(placebo_cart$frame$yval)<epsilon)
-  ind <- rownames(placebo_cart$frame)[ind]
-  ## If there are no regions identified by CART, we simply return a nx1 matrix with all elements equal to FALSE
-  if (length(ind)==0) return(matrix(FALSE,N,1))
-  ## Make ind numeric
-  ind <- as.numeric(ind)
-  ## First, we get the path for every node (internal or terminal)
-  path.nodes <- get_node_paths(placebo_cart)
-  ## Now we get the full path for each point i \in {1,...,N}
-  ## Element "where" in the rpart object gives:
-  ### "the row number of frame corresponding to the leaf node that each observation falls into"
-  ### rownames of the "frame" element of the rpart object gives the names of the nodes
-  ## The object leaf.vec stores the name of the leaf node each i falls into
-  leaf.vec <- rownames(placebo_cart$frame)[placebo_cart$where]
-  ## Now, we make a list of size N which stores the path that reaches the leaf node of each i
-  leaf.per.point <- lapply(1:N, function(i) path.nodes[[leaf.vec[i]]])
-  ## Store deepest PTA region for each point
-  max.pta <- lapply(1:N, function(i) ind[ind %in% leaf.per.point[[i]]])
-  max.pta <- lapply(max.pta, function(i) ifelse(length(i)==0,NA,max(i)))
-
-  points.in.region <- lapply(max.pta, function(i) sapply(leaf.per.point, function(j) i %in% j))
-  ## Finally, we create a N x length(ind) matrix. Each column of this matrix stores a boolean vector
-  ### which equals TRUE when i crosses a given PTA region. E.g. if the columns refer to regions x = 2 and x \in {3,4}
-  ### the matrix has 2 columns, one which tracks points with x=2, and one for points with x \in {3,4}.
-  # regions <- points.per.region(nodes.pta,leaf.per.point)
-  return(points.in.region)
-}
-#' results.per.region
-#' Output results
+#' Obtain CATT and delta gamma for each point based on the deepest PTA node they reach
 #' @param x feature set
-#' @param delta1_aux delta_1 prediction from auxiliary regression
-#' @param delta0_aux delta_0 prediction from auxiliary regression
-#' @param delta1_main delta_1 prediction from main regression
-#' @param delta0_main delta_0 prediction from main regression
-#' @param regions PTA regions, output from pta.nodes function
-#' @param CART rpart object, either NULL, if saveCART==FALSE, or the object, if saveCART==TRUE
-#' @return list with: 1- Difference in betas per region; 2- CATT estimates per region; 3- matrix with regions; 4- lists with x per region and x with no flagged region; 6- CART tree
-results.per.region <- function(x,delta1_aux,delta0_aux,delta1_main,delta0_main,regions,CART=NULL)
+#' @param gamma1 gamma_1 prediction
+#' @param gamma0 gamma_0 prediction
+#' @param bta1 beta_1 + tau_1 + alpha_1 prediction
+#' @param beta0 beta_0 prediction
+#' @param placebo_cart rpart object
+#' @param epsilon Parameter that dictates how close the trends between two groups needs to be for PTA to be considered valid
+#' @param saveCART boolean: should rpart object be stored in the output
+results <- function(x,gamma1,gamma0,bta1,beta0,placebo_cart,epsilon,saveCART)
 {
   g <- x$g
-  dbetas <- sapply(regions, function(i) mean(delta1_aux[g==1 & i])-mean(delta0_aux[g==0 & i]))
-  catt <- sapply(regions, function(i) mean(delta1_main[g==1 & i])-mean(delta0_main[g==0 & i]))
-  # x.in.reg <- lapply(1:ncol(regions), function(i) x[regions[,i],])
-  # x.not.in.reg <- x[rowSums(regions)==0,]
-  # if (is.null(CART)) out <- list(beta.diff=dbetas,catt=catt,regions=regions,x.per.regions=x.in.reg,x.not.in.regions=x.not.in.reg)
-  # else out <- list(beta.diff=dbetas,catt=catt,regions=regions,x.per.regions=x.in.reg,x.not.in.regions=x.not.in.reg,cart=CART)
-  if (is.null(CART)) out <- list(beta.diff=dbetas,catt=catt)
-  else out <- list(beta.diff=dbetas,catt=catt,cart=CART)
-  return(out)
+  N <- length(g)
+  ## Determine which nodes have b1-b0 close enough to zero
+  pta.nodes <- which(abs(placebo_cart$frame$yval)<epsilon)
+  if (length(which(abs(placebo_cart$frame$yval)<epsilon))==0)
+  {
+    if (saveCART) return(list(beta.diff=rep(NA,N),catt=rep(NA,N),CART=placebo_cart))
+    return(list(beta.diff=rep(NA,N),catt=rep(NA,N)))
+  }
+  pta.nodes <- rownames(placebo_cart$frame)[pta.nodes]
+  ## Get the path for every node (internal or terminal)
+  path.per.node <- get_node_paths(placebo_cart)
+  ## Get the path for each point in sample (placebo_cart$where returns the leaf node each point falls into)
+  path.per.point <- path.per.node[placebo_cart$where]
+  ## Obtain n x k matrix, where each column is one of 1:k PTA regions, values are TRUE if point passes through a region, FALSE otherwise
+  points.in.pta.nodes <- sapply(pta.nodes, function(i) sapply(path.per.point, function(j) i %in% j))
+  ## Obtain CATT per PTA region
+  catt.per.pta.node <- apply(points.in.pta.nodes, 2, function(i) mean(bta1[g==1 & i])-mean(beta0[g==0 & i]))
+  ## Obtain delta gamma per PTA region
+  dgamma.per.pta.node <- apply(points.in.pta.nodes, 2, function(i) mean(gamma1[g==1 & i])-mean(gamma0[g==0 & i]))
+  ## Get deepest PTA node for each point (NA if never crosses a PTA node)
+  max.pta.node <- sapply(path.per.point, function(i) ifelse(length(pta.nodes[pta.nodes %in% i])==0,NA,max(pta.nodes[pta.nodes %in% i])))
+  ## Create output list
+  if (saveCART) return(list(beta.diff=dgamma.per.pta.node[max.pta.node],catt=catt.per.pta.node[max.pta.node],CART=placebo_cart))
+  return(list(beta.diff=dgamma.per.pta.node[max.pta.node],catt=catt.per.pta.node[max.pta.node]))
 }
+
 #' searchPTA
 #'
 #' Wrapper function to perform all operations
 #' @param x Feature set from main data
-#' @param delta1_aux delta_1 prediction from auxiliary regression
-#' @param delta0_aux delta_0 prediction from auxiliary regression
-#' @param delta1_main delta_1 prediction from main regression
-#' @param delta0_main delta_0 prediction from main regression
+#' @param gamma1 gamma_1 prediction from auxiliary regression
+#' @param gamma0 gamma_0 prediction from auxiliary regression
+#' @param bta1 beta_1 + tau_1 + alpha_1 prediction from main regression
+#' @param beta0 beta_0 prediction from main regression
 #' @param epsilon Parameter that dictates how close the trends between two groups needs to be for PTA to be considered valid
-#' @param saveCART Whether or not to save the CART tree fit in the first step
-#' @param ... Additional arguments for rpart.control --- control CART tree growth
+#' @param saveCART boolean: should rpart object be stored in the output
+#' @param ... Additional arguments for rpart fit (see rpart.control)
 #' @export
-searchPTA <- function(x,delta1_aux,delta0_aux,delta1_main,delta0_main,epsilon,saveCART=TRUE,...)
+searchPTA <- function(x,gamma1,gamma0,bta1,beta0,epsilon,saveCART=TRUE,...)
 {
-  delta1_aux_temp <- delta1_aux[x$g==1]
-  delta0_aux_temp <- delta0_aux[x$g==0]
-  delta1_main_temp <- delta1_main[x$g==1]
-  delta0_main_temp <- delta0_main[x$g==0]
+  gamma1_temp <- gamma1[x$g==1]
+  gamma0_temp <- gamma0[x$g==0]
+  bta1_temp <- bta1[x$g==1]
+  beta0_temp <- beta0[x$g==0]
   g1.rows <- as.numeric(rownames(subset(x,g==1)))
   g0.rows <- as.numeric(rownames(subset(x,g==0)))
-  wt <- c(rep(1,length(delta1_aux_temp)),rep(2,length(delta0_aux_temp)))
-  placebo_cart <- placebo.cart(x=x,gamma1=delta1_aux_temp,gamma0=delta0_aux_temp,bta1=delta1_main_temp,beta0=delta0_main_temp,epsilon=epsilon,wt=wt,...)
-  regions <- pta.nodes(placebo_cart=placebo_cart,epsilon=epsilon)
-  # regions <- as.matrix(regions[order(c(g1.rows,g0.rows)),])
-  if (saveCART)
-  {
-    return(results.per.region(x,delta1_aux,delta0_aux,delta1_main,delta0_main,regions,CART=placebo_cart))
-  } else
-  {
-    return(results.per.region(x,delta1_aux,delta0_aux,delta1_main,delta0_main,regions,CART=NULL))
-  }
+  wt <- c(rep(1,length(gamma1_temp)),rep(2,length(gamma0_temp)))
+  placebo_cart <- placebo.cart(x=x,gamma1=gamma1_temp,gamma0=gamma0_temp,epsilon=epsilon,wt=wt,...)
+  return(results(x,gamma1=gamma1,gamma0=gamma0,bta1=bta1,beta0=beta0,placebo_cart=placebo_cart,epsilon=epsilon,saveCART=saveCART))
 }

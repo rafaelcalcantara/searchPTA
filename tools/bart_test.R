@@ -115,7 +115,7 @@ library(doParallel)
 ### First stage: fit BART to obtain (\gamma_1, \gamma_0), (\beta_1, \beta_0) predictions
 #### BART setup
 num_chains <- 20
-draws <- 25
+draws <- 50
 burnin <- 10
 keep.draws <- (burnin+1):(draws+burnin)
 ncores <- 10
@@ -188,7 +188,7 @@ cl <- makeCluster(ncores)
 registerDoParallel(cl)
 bart_catt_region <- foreach(i = 1:(draws*num_chains)) %dopar%
 {
-  searchPTA::searchPTA(df,g1[,i],g0[,i],bta1[,i],b0[,i],epsilon=eps,minsplit=1,minbucket=1,cp=0,maxdepth=30)
+  searchPTA::searchPTA(df,g1[,i],g0[,i],bta1[,i],b0[,i],saveCART = FALSE,epsilon=eps,minsplit=1,minbucket=1,cp=0,maxdepth=30)
 }
 stopCluster(cl)
 #### Calculate CATT posterior

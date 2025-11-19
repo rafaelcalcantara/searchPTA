@@ -4,33 +4,24 @@
 \alias{searchPTA}
 \title{searchPTA}
 \usage{
-searchPTA(
-  x,
-  beta1_placebo,
-  beta0_placebo,
-  beta1_main,
-  beta0_main,
-  epsilon,
-  saveCART = TRUE,
-  ...
-)
+searchPTA(x, gamma1, gamma0, bta1, beta0, epsilon, saveCART = TRUE, ...)
 }
 \arguments{
 \item{x}{Feature set from main data}
 
+\item{gamma1}{gamma_1 prediction from auxiliary regression}
+
+\item{gamma0}{gamma_0 prediction from auxiliary regression}
+
+\item{bta1}{beta_1 + tau_1 + alpha_1 prediction from main regression}
+
+\item{beta0}{beta_0 prediction from main regression}
+
 \item{epsilon}{Parameter that dictates how close the trends between two groups needs to be for PTA to be considered valid}
 
-\item{saveCART}{Whether or not to save the CART tree fit in the first step}
+\item{saveCART}{boolean: should rpart object be stored in the output}
 
-\item{...}{Additional arguments for rpart.control --- control CART tree growth}
-
-\item{delta1_aux}{delta_1 prediction from auxiliary regression}
-
-\item{delta0_aux}{delta_0 prediction from auxiliary regression}
-
-\item{delta1_main}{delta_1 prediction from main regression}
-
-\item{delta0_main}{delta_0 prediction from main regression}
+\item{...}{Additional arguments for rpart fit (see rpart.control)}
 }
 \description{
 Wrapper function to perform all operations
