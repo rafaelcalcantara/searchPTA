@@ -11,13 +11,10 @@ g <- c(rep(1,n1),rep(0,n0))
 z <- c(g,g,g)*(t==1)
 ### X1: capital stock
 x1 <- g*rgamma(n,3,3) + (1-g)*rgamma(n,6,3)
-# x1 <- rgamma(n,8,1)
 ### X2: number of employees
 x2 <- ifelse(g==1,sample(c("small","large"),n,replace=TRUE,prob=c(0.6,0.4)),sample(c("small","large"),n,replace=TRUE,prob=c(0.4,0.6)))
-# x2 <- sample(1:5,n,replace=TRUE,prob=c(0.1,0.2,0.3,0.3,0.1))
 ### X3: sector
 x3 <- ifelse(g==1,sample(c("a","b","c"),n,replace=TRUE,prob=c(0.4,0.25,0.35)),sample(c("a","b","c"),n,replace=TRUE,prob=rep(1/3,3)))
-# x3 <- sample(c("a","c"),n,replace=TRUE,prob=rep(1/2,2))
 #### Visualize feature distribution per g
 par(mfrow=c(3,2),bty="n",cex.axis=0.7)
 hist(x1[g==1])
@@ -45,7 +42,6 @@ beta_fun <- function(x1,x2,x3,g)
   a1 <- ifelse(x3=="a",0.6, ifelse(x3=="b",0.45,0.15))
   a2 <- ifelse(g==1,0.1,0.3)
   a <- a0+a1+a2
-  ## x1 coefficient
   b <- ifelse(g==1,0.4,0.1)
   ## Return beta
   return(a+b*x1)
@@ -60,7 +56,6 @@ tau_fun <- function(x2,x3)
 alpha_fun <- function(x2)
 {
   a0 <- ifelse(x2=="large",0,0.4)
-  # a1 <- ifelse(x3=="c",0.5,0)
   return(a0)
 }
 ### Calculate function values
@@ -115,7 +110,7 @@ library(doParallel)
 ### First stage: fit BART to obtain (\gamma_1, \gamma_0), (\beta_1, \beta_0) predictions
 #### BART setup
 num_chains <- 20
-draws <- 50
+draws <- 25
 burnin <- 10
 keep.draws <- (burnin+1):(draws+burnin)
 ncores <- 10
@@ -183,14 +178,17 @@ abline(a=0,b=1)
 ### Second stage: apply our CART search procedure to the posterior draws of BART
 eps <- 0.03
 df <- data.frame(X1=x1,X2=factor(x2,ordered=TRUE),X3=factor(x3,ordered=FALSE),g=g)
-# df <- data.frame(X=S,g=g)
+t0 <- Sys.time()
 cl <- makeCluster(ncores)
 registerDoParallel(cl)
+t1 <- Sys.time()
 bart_catt_region <- foreach(i = 1:(draws*num_chains)) %dopar%
 {
   searchPTA::searchPTA(df,g1[,i],g0[,i],bta1[,i],b0[,i],saveCART = FALSE,epsilon=eps,minsplit=1,minbucket=1,cp=0,maxdepth=30)
 }
+t2 <- Sys.time()
 stopCluster(cl)
+t3 <- Sys.time()
 #### Calculate CATT posterior
 post.cart.posterior <- sapply(bart_catt_region, function(i) i$catt)
 #### Check distribution of posterior probability of identification for points within each region
