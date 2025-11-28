@@ -114,11 +114,11 @@ par(mfrow=c(1,2))
 eps <- 0.01
 
 df <- data.frame(X1=x1,X2=factor(x2,ordered=TRUE),X3=factor(x3,ordered=FALSE),g=g)
-test <- searchPTA::searchPTA(df,gamma,gamma,beta+tau+alpha,beta,epsilon=eps,minsplit=1,minbucket=1,cp=0.001,maxdepth=30)
-rpart.plot::rpart.plot(test$cart)
+test <- searchPTA::searchPTA(df,gamma,gamma,beta+tau+alpha,beta,epsilon=eps,minsplit=1,minbucket=1,cp=0,maxdepth=30,saveCART = TRUE)
+rpart.plot::rpart.plot(test$CART)
 table(test$beta.diff,S)
 
 df <- data.frame(X=S,g=g)
-test <- searchPTA::searchPTA(df,gamma,gamma,beta+tau+alpha,beta,epsilon=eps,minsplit=1,minbucket=1,cp=0,maxdepth=30)
-rpart.plot::rpart.plot(test$cart)
+test <- searchPTA::searchPTA(df,gamma,gamma,beta+tau+alpha,beta,epsilon=eps,minsplit=1,minbucket=1,cp=0,maxdepth=30,saveCART = TRUE)
+rpart.plot::rpart.plot(test$CART)
 table(test$beta.diff,S)

@@ -61,20 +61,26 @@ cart_split <- function(y,x)
       temp0 <- cumsum(y*(1-w))/cumsum(1-w)
       temp3 <- (-cumsum(y*w))/(sum(w)-cumsum(w))
       temp2 <- (-cumsum(y*(1-w)))/(sum(1-w)-cumsum(1-w))
-      temp0 <- ifelse(is.na(temp0),0,temp0)
-      temp1 <- ifelse(is.na(temp1),0,temp1)
-      temp2 <- ifelse(is.na(temp2),0,temp2)
-      temp3 <- ifelse(is.na(temp3),0,temp3)
       lmean <- temp1+temp0
+      lmean <- ifelse(is.na(lmean)|!is.finite(lmean),NA,lmean)
       rmean <- temp3+temp2
+      rmean <- ifelse(is.na(rmean)|!is.finite(rmean),NA,rmean)
       ####
       ym <- sum(y*w1)
-      goodness <- ((lmean-ym)^2 + (rmean-ym)^2)/(sum((y-ym)^2))
       ####
-      delta.diff <- n*((abs(rmean) < epsilon) | (abs(lmean) < epsilon))
-      goodness <- goodness[-n] + delta.diff[-n]
-      goodness <- ifelse(is.na(goodness),0,goodness)
-      goodness <- ifelse(!is.finite(goodness),0,goodness)
+      delta.diff <- sapply(1:(n-1), function(i) min(abs(rmean[i]),abs(lmean[i])))
+      delta.diff <- ifelse(is.na(delta.diff),Inf,delta.diff)
+      if (is.na(ym))
+      {
+        goodness <- rep(0,n-1)
+      } else if (any(delta.diff < abs(ym)))
+      {
+        goodness <- 1/delta.diff
+      } else
+      {
+        goodness <- rnorm(n-1,0,0.01)
+      }
+      goodness <- goodness[-n]
       ## Store results
       list(goodness=goodness, direction=sign(lmean[-n]))
     }
@@ -163,8 +169,8 @@ results <- function(x,gamma1,gamma0,bta1,beta0,placebo_cart,epsilon,saveCART)
   g <- x$g
   N <- length(g)
   ## Determine which nodes have b1-b0 close enough to zero
-  pta.nodes <- which(abs(placebo_cart$frame$yval)<epsilon)
-  if (length(which(abs(placebo_cart$frame$yval)<epsilon))==0)
+  pta.nodes <- which(abs(placebo_cart$frame$yval) < epsilon)
+  if (length(pta.nodes)==0)
   {
     if (saveCART) return(list(beta.diff=rep(NA,N),catt=rep(NA,N),CART=placebo_cart))
     return(list(beta.diff=rep(NA,N),catt=rep(NA,N)))

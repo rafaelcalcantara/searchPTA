@@ -1,7 +1,16 @@
 ## Setup-----------------------------------------------------------------------
+library(stochtree)
+library(foreach)
+library(doParallel)
+library(ggridges)
+library(ggplot2)
+library(gridExtra)
 seed <- 007
 set.seed(seed)
 n <- 1000
+n_regions <- 2
+if (n_regions==2) lims <- c(-1,5)
+if (n_regions==3) lims <- c(-0.5,3.2)
 ## Generate data---------------------------------------------------------------
 ### Fixed features
 t <- c(rep(-1,n),rep(0,n),rep(1,n))
@@ -9,11 +18,8 @@ n1 <- n %/% 2
 n0 <- n-n1
 g <- c(rep(1,n1),rep(0,n0))
 z <- c(g,g,g)*(t==1)
-### X1: capital stock
 x1 <- g*rgamma(n,3,3) + (1-g)*rgamma(n,6,3)
-### X2: number of employees
 x2 <- ifelse(g==1,sample(c("small","large"),n,replace=TRUE,prob=c(0.6,0.4)),sample(c("small","large"),n,replace=TRUE,prob=c(0.4,0.6)))
-### X3: sector
 x3 <- ifelse(g==1,sample(c("a","b","c"),n,replace=TRUE,prob=c(0.4,0.25,0.35)),sample(c("a","b","c"),n,replace=TRUE,prob=rep(1/3,3)))
 #### Visualize feature distribution per g
 par(mfrow=c(3,2),bty="n",cex.axis=0.7)
@@ -49,8 +55,8 @@ beta_fun <- function(x1,x2,x3,g)
 gamma_fun <- function(x1,x2,x3,g) beta_fun(x1,x2,x3,g)
 tau_fun <- function(x2,x3)
 {
-  a0 <- ifelse(x2=="large",0.1,0.8)
-  a1 <- ifelse(x3=="a",0.3, 0.1)
+  a0 <- ifelse(x2=="large",0.1,0.6)
+  a1 <- ifelse(x3=="a",0.8, ifelse(x3=="b",0.6,0))
   return(a0+a1)
 }
 alpha_fun <- function(x2)
@@ -64,6 +70,7 @@ beta <- beta_fun(x1,x2,x3,g)
 gamma <- gamma_fun(x1,x2,x3,g)
 tau <- tau_fun(x2,x3)
 alpha <- alpha_fun(x2)
+catt <- tau+alpha[g==1]
 ### Define PTA regions
 S <- rep(3,n)
 for (i in 1:n)
@@ -71,21 +78,28 @@ for (i in 1:n)
   if (x2[i] == "large") S[i] <- 1
   if (x2[i] == "small" & x3[i] %in% c("a","b")) S[i] <- 2
 }
-### Establish PTA in regions 1 and 2
+### Establish PTA in regions
 beta_avg_1_1 <- mean(beta[S==1 & g==1])
 beta_avg_1_0 <- mean(beta[S==1 & g==0])
 beta_avg_2_1 <- mean(beta[S==2 & g==1])
 beta_avg_2_0 <- mean(beta[S==2 & g==0])
 beta_avg_3_1 <- mean(beta[S==3 & g==1])
 beta_avg_3_0 <- mean(beta[S==3 & g==0])
-beta <- beta - (S==1 & g==1)*(beta_avg_1_1-beta_avg_1_0) - (S==2 & g==1)*(beta_avg_2_1-beta_avg_2_0) - (S==3 & g==1)*(beta_avg_3_1-beta_avg_3_0 - 3)
 gamma_avg_1_1 <- mean(gamma[S==1 & g==1])
 gamma_avg_1_0 <- mean(gamma[S==1 & g==0])
 gamma_avg_2_1 <- mean(gamma[S==2 & g==1])
 gamma_avg_2_0 <- mean(gamma[S==2 & g==0])
 gamma_avg_3_1 <- mean(gamma[S==3 & g==1])
 gamma_avg_3_0 <- mean(gamma[S==3 & g==0])
-gamma <- gamma - (S==1 & g==1)*(gamma_avg_1_1-gamma_avg_1_0) - (S==2 & g==1)*(gamma_avg_2_1-gamma_avg_2_0) - (S==3 & g==1)*(gamma_avg_3_1-gamma_avg_3_0 - 3)
+if (n_regions==2)
+{
+  beta <- beta - (S==1 & g==1)*(beta_avg_1_1-beta_avg_1_0) - (S==2 & g==1)*(beta_avg_2_1-beta_avg_2_0) - (S==3 & g==1)*(beta_avg_3_1-beta_avg_3_0 - 3)
+  gamma <- gamma - (S==1 & g==1)*(gamma_avg_1_1-gamma_avg_1_0) - (S==2 & g==1)*(gamma_avg_2_1-gamma_avg_2_0) - (S==3 & g==1)*(gamma_avg_3_1-gamma_avg_3_0 - 3)
+} else if (n_regions==3)
+{
+  beta <- beta - (S==1 & g==1)*(beta_avg_1_1-beta_avg_1_0) - (S==2 & g==1)*(beta_avg_2_1-beta_avg_2_0) - (S==3 & g==1)*(beta_avg_3_1-beta_avg_3_0)
+  gamma <- gamma - (S==1 & g==1)*(gamma_avg_1_1-gamma_avg_1_0) - (S==2 & g==1)*(gamma_avg_2_1-gamma_avg_2_0) - (S==3 & g==1)*(gamma_avg_3_1-gamma_avg_3_0)
+}
 ### Generate outcome
 Ey <- rep(mu,3) - rep(gamma,3)*(t==-1) + rep(beta,3)*(t==1) +  rep(tau,3)*z + rep(alpha,3)*z*(t==1)
 error.sd <- 0.2*sd(Ey)
@@ -104,9 +118,6 @@ mean(y[S==1 & g==1 & t==0])-mean(y[S==1 & g==0 & t==0]) - (mean(y[S==1 & g==1 & 
 mean(y[S==2 & g==1 & t==0])-mean(y[S==2 & g==0 & t==0]) - (mean(y[S==2 & g==1 & t==-1])-mean(y[S==2 & g==0 & t==-1]))
 mean(y[S==3 & g==1 & t==0])-mean(y[S==3 & g==0 & t==0]) - (mean(y[S==3 & g==1 & t==-1])-mean(y[S==3 & g==0 & t==-1]))
 ## Estimation------------------------------------------------------------------
-library(stochtree)
-library(foreach)
-library(doParallel)
 ### First stage: fit BART to obtain (\gamma_1, \gamma_0), (\beta_1, \beta_0) predictions
 #### BART setup
 num_chains <- 20
@@ -160,58 +171,96 @@ bart_model_outputs <- foreach (i = 1:num_chains) %dopar% {
 }
 stopCluster(cl)
 #### Join results from each run
-bart_catt_i <- do.call("cbind",lapply(bart_model_outputs, function(i) (i$beta1_tau1_alpha1-i$beta0)[1:n,]))
 bta1 <- do.call("cbind",lapply(bart_model_outputs, function(i) i$beta1_tau1_alpha1[1:n,]))
 b0 <- do.call("cbind",lapply(bart_model_outputs, function(i) i$beta0[1:n,]))
 g1 <- do.call("cbind",lapply(bart_model_outputs, function(i) i$gamma1[1:n,]))
 g0 <- do.call("cbind",lapply(bart_model_outputs, function(i) i$gamma0[1:n,]))
-#### Check the quality of the BART estimates
-par(mfrow=c(2,2),bty="n")
-plot(rowMeans(bta1)[1:n][g==1],(beta+tau+alpha)[g==1])
-abline(a=0,b=1)
-plot(rowMeans(b0)[1:n][g==0],(beta)[g==0])
-abline(a=0,b=1)
-plot(rowMeans(g1)[1:n][g==1],gamma[g==1])
-abline(a=0,b=1)
-plot(rowMeans(g0)[1:n][g==0],gamma[g==0])
-abline(a=0,b=1)
 ### Second stage: apply our CART search procedure to the posterior draws of BART
+#### Set prior parameters
+alpha.prior.1 <- 0.5
+alpha.prior.2 <- 2
+beta.prior.1 <- 0.5
+beta.prior.2 <- 1.3
+# beta.prior.1 <- qgamma(0.95,alpha.prior.1,1)/(2*max(catt))
+# beta.prior.2 <- qgamma(0.95,alpha.prior.2,1)/(2*max(catt))
+mu.prior <- -qnorm(0.2)
+#### Set epsilon
+summary(apply(abs(g1-g0),2,quantile,0.05))
 eps <- 0.03
 df <- data.frame(X1=x1,X2=factor(x2,ordered=TRUE),X3=factor(x3,ordered=FALSE),g=g)
-t0 <- Sys.time()
+#### Perform CART search
 cl <- makeCluster(ncores)
 registerDoParallel(cl)
-t1 <- Sys.time()
 bart_catt_region <- foreach(i = 1:(draws*num_chains)) %dopar%
-{
-  searchPTA::searchPTA(df,g1[,i],g0[,i],bta1[,i],b0[,i],saveCART = FALSE,epsilon=eps,minsplit=1,minbucket=1,cp=0,maxdepth=30)
-}
-t2 <- Sys.time()
+  {
+    searchPTA::searchPTA(df,g1[,i],g0[,i],bta1[,i],b0[,i],saveCART = FALSE,epsilon=eps,minsplit=2,minbucket=2,cp=0,maxdepth=30)
+  }
 stopCluster(cl)
-t3 <- Sys.time()
-#### Calculate CATT posterior
-post.cart.posterior <- sapply(bart_catt_region, function(i) i$catt)
+#### Obtain CATT posterior
+post.cart.posterior <- do.call("cbind",lapply(bart_catt_region, function(i) i$catt))
 #### Check distribution of posterior probability of identification for points within each region
 prob_id <- rowMeans(!is.na(post.cart.posterior)) ## posterior probability of being in PTA region
-par(mfrow=c(1,1),bty="n",cex.lab=0.7)
-boxplot(prob_id~S,ylab="Posterior prob. of point being in identified region")
+names(prob_id) <- 1:length(prob_id)
 ### Ridge plot for posterior distribution of a handful of points
-library(ggridges)
-library(ggplot2)
-library(gridExtra)
 num.points <- 10 ## number of points to choose
 #### Region S1
-points.s1 <- order(prob_id)
-points.s1 <- points.s1[(g==1 & S==1)[points.s1]]
-points.s1 <- points.s1[seq(1,length(points.s1),length.out=num.points)]
+points.s1 <- which(x1 %in% sort(x1[g==1 & S==1])[seq(1,sum(g==1 & S==1),length.out=num.points)])
+# points.s1 <- as.numeric(names(prob_id[g==1 & S==1][order(prob_id[g==1 & S==1])]))[round(seq(1,sum(g==1 & S==1),length.out=num.points))]
 #### Region S2
-points.s2 <- order(prob_id)
-points.s2 <- points.s2[(g==1 & S==2)[points.s2]]
-points.s2 <- points.s2[seq(1,length(points.s2),length.out=num.points)]
+points.s2 <- which(x1 %in% sort(x1[g==1 & S==2])[seq(1,sum(g==1 & S==2),length.out=num.points)])
+# points.s2 <- as.numeric(names(prob_id[g==1 & S==2][order(prob_id[g==1 & S==2])]))[round(seq(1,sum(g==1 & S==2),length.out=num.points))]
 #### Unidentified region
-points.snull <- order(prob_id)
-points.snull <- points.snull[(g==1 & S==3)[points.snull]]
-points.snull <- points.snull[seq(1,length(points.snull),length.out=num.points)]
+points.snull <- which(x1 %in% sort(x1[g==1 & S==3])[seq(1,sum(g==1 & S==3),length.out=num.points)])
+# points.snull <- as.numeric(names(prob_id[g==1 & S==3][order(prob_id[g==1 & S==3])]))[round(seq(1,sum(g==1 & S==3),length.out=num.points))]
+#### Plot
+for (prior in c("gamma1","gamma2","gauss1","gauss2"))
+{
+  if (prior == "gamma1")
+  {
+    post.cart.posterior.prior <- t(apply(post.cart.posterior,1, function(i) ifelse(is.na(i),rgamma(length(i),alpha.prior.1,beta.prior.1),i)))
+  } else
+  {
+    if (prior == "gamma2") post.cart.posterior.prior <- t(apply(post.cart.posterior,1, function(i) ifelse(is.na(i),rgamma(length(i),alpha.prior.2,beta.prior.2),i)))
+    if (prior == "gauss1") post.cart.posterior.prior <- t(apply(post.cart.posterior,1, function(i) ifelse(is.na(i),rnorm(length(i),mu.prior,1),i)))
+    if (prior == "gauss2") post.cart.posterior.prior <- t(apply(post.cart.posterior,1, function(i) ifelse(is.na(i),rnorm(length(i)),i)))
+  }
+  # post.cart.posterior.prior <- post.cart.posterior
+  plotlist <- list(3)
+  for (j in 1:3){
+    ## Select region
+    if (j == 1){points <- points.s1}
+    if (j == 2){points <- points.s2}
+    if (j == 3){points <- points.snull}
+    ## Create data frame for plot
+    post.mat <- post.cart.posterior.prior[points,]
+    m <- ncol(post.mat)
+    k <- nrow(post.mat)
+    tempdf <- data.frame(catt = c(post.mat),obs = factor(rep(1:k,each=1)),Px=seq(0,1,length.out=num.points))
+    # if (j==3) tempdf$Px <- round(tempdf$Px,2)
+    ## Plots for PTA regions with vertical line indicating true CATT in region
+    plotlist[[j]] <- ggplot(tempdf, aes(x = `catt`, y = `obs`, fill = Px)) +
+      xlim(min(lims), max(lims)) +
+      geom_density_ridges(scale = 3, rel_min_height = 0.01, na.rm = TRUE,show.legend = FALSE) +
+      scale_fill_gradient(low = scales::alpha("blue",0.2), high = "blue",
+                          name = "Tail prob.") +
+      geom_vline(xintercept = mean((tau+alpha)[g==1 & S==j]),color="firebrick",linewidth=1.5) +
+      theme_bw() +
+      theme(panel.background = element_blank(),
+            axis.title.x = element_blank(),
+            axis.title.y = element_blank(),
+            axis.text.y  = element_blank(),
+            axis.ticks.y = element_blank())
+  }
+  ##### Print plot
+  # pdf(paste0("~/Dropbox/DiD/Figures/ridge_plots_tree_did_",n_regions,"_regions_prior_",prior,"_n",n,".pdf"), width = 6, height = 8)
+  grid.arrange(plotlist[[1]],plotlist[[2]],plotlist[[3]],nrow = 3)
+  # dev.off()
+}
+### Fully aggregated PTA comparison
+#### Calculate ATT posterior
+post.cart.posterior <- bta1-b0
+post.cart.posterior <- matrix(rep(apply(post.cart.posterior,2, function(i) mean(i[g==1])),n),nrow=n,byrow=T)
+### Ridge plot for posterior distribution of a handful of points
 #### Plot
 plotlist <- list(3)
 for (j in 1:3){
@@ -223,23 +272,56 @@ for (j in 1:3){
   post.mat <- post.cart.posterior[points,]
   m <- ncol(post.mat)
   k <- nrow(post.mat)
-  tempdf <- data.frame(catt = c(post.mat),obs = factor(rep(1:k,each=1)),prob_id=prob_id[points])
-  if (j!=3)
-  {
-    ## Plots for PTA regions with vertical line indicating true CATT in region
-    plotlist[[j]] <- ggplot(tempdf, aes(x = `catt`, y = `obs`, fill = prob_id)) +
-      xlim(0, 2) +
-      geom_density_ridges(scale = 3, rel_min_height = 0.01, na.rm = TRUE) +
-      geom_vline(xintercept = mean((tau+alpha)[g==1 & S==j]),color="firebrick") +
-      labs(title = 'Posterior Densities')
-  } else
-  {
-    ## Plots for non-PTA regions not indicating true CATT in region
-    plotlist[[j]] <- ggplot(tempdf, aes(x = `catt`, y = `obs`, fill = prob_id)) +
-      xlim(0, 2) +
-      geom_density_ridges(scale = 3, rel_min_height = 0.01, na.rm = TRUE) +
-      labs(title = 'Posterior Densities')
-  }
+  tempdf <- data.frame(catt = c(post.mat),obs = factor(rep(1:k,each=1)),Px=seq(0,1,length.out=num.points))
+  ## Plots for PTA regions with vertical line indicating true CATT in region
+  plotlist[[j]] <- ggplot(tempdf, aes(x = `catt`, y = `obs`, fill = Px)) +
+    xlim(min(lims), max(lims)) +
+    geom_density_ridges(scale = 3, rel_min_height = 0.01, na.rm = TRUE,show.legend = FALSE) +
+    scale_fill_gradient(low = scales::alpha("orange",0.2), high = "orange",
+                        name = "Tail prob.") +
+    geom_vline(xintercept = mean((tau+alpha)[g==1 & S==j]),color="firebrick",linewidth=1.5) +
+    theme_bw() +
+    theme(panel.background = element_blank(),
+          axis.title.x = element_blank(),
+          axis.title.y = element_blank(),
+          axis.text.y  = element_blank(),
+          axis.ticks.y = element_blank())
 }
 ##### Print plot
+# pdf(paste0("~/Dropbox/DiD/Figures/ridge_plots_att_",n_regions,"_regions_n",n,".pdf"), width = 6, height = 8)
 grid.arrange(plotlist[[1]],plotlist[[2]],plotlist[[3]],nrow = 3)
+# dev.off()
+### Fully disaggregated PTA comparison
+#### Calculate CATT(x) posterior
+post.cart.posterior <- bta1-b0
+### Ridge plot for posterior distribution of a handful of points
+#### Plot
+plotlist <- list(3)
+for (j in 1:3){
+  ## Select region
+  if (j == 1){points <- points.s1}
+  if (j == 2){points <- points.s2}
+  if (j == 3){points <- points.snull}
+  ## Create data frame for plot
+  post.mat <- post.cart.posterior[points,]
+  m <- ncol(post.mat)
+  k <- nrow(post.mat)
+  tempdf <- data.frame(catt = c(post.mat),obs = factor(rep(1:k,each=1)),Px=seq(0,1,length.out=num.points))
+  ## Plots for PTA regions with vertical line indicating true CATT in region
+  plotlist[[j]] <- ggplot(tempdf, aes(x = `catt`, y = `obs`, fill = Px)) +
+    xlim(min(lims), max(lims)) +
+    geom_density_ridges(scale = 3, rel_min_height = 0.01, na.rm = TRUE,show.legend = FALSE) +
+    scale_fill_gradient(low = scales::alpha("#069494",0.2), high = "#069494",
+                        name = "Tail prob.") +
+    geom_vline(xintercept = mean((tau+alpha)[g==1 & S==j]),color="firebrick",linewidth=1.5) +
+    theme_bw() +
+    theme(panel.background = element_blank(),
+          axis.title.x = element_blank(),
+          axis.title.y = element_blank(),
+          axis.text.y  = element_blank(),
+          axis.ticks.y = element_blank())
+}
+##### Print plot
+# pdf(paste0("~/Dropbox/DiD/Figures/ridge_plots_catt_",n_regions,"_regions_n",n,".pdf"), width = 6, height = 8)
+grid.arrange(plotlist[[1]],plotlist[[2]],plotlist[[3]],nrow = 3)
+# dev.off()
