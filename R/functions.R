@@ -68,7 +68,7 @@ cart_split <- function(y,x)
       ####
       ym <- sum(y*w1)
       ####
-      delta.diff <- sapply(1:(n-1), function(i) min(abs(rmean[i]),abs(lmean[i])))
+      delta.diff <- sapply(1:(n-1), function(i) max(abs(rmean[i]),abs(lmean[i])))
       delta.diff <- ifelse(is.na(delta.diff),Inf,delta.diff)
       if (is.na(ym))
       {
@@ -78,9 +78,12 @@ cart_split <- function(y,x)
         goodness <- 1/delta.diff
       } else
       {
-        goodness <- rnorm(n-1,0,0.01)
+        # delta.diff <- sapply(1:(n-1), function(i) max(abs(rmean[i]),abs(lmean[i])))
+        # delta.diff <- ifelse(is.na(delta.diff),Inf,delta.diff)
+        # goodness <- 1/delta.diff
+        goodness <- runif(n-1,0,1)/10
       }
-      goodness <- goodness[-n]
+      # goodness <- goodness[-n]
       ## Store results
       list(goodness=goodness, direction=sign(lmean[-n]))
     }
@@ -189,8 +192,8 @@ results <- function(x,gamma1,gamma0,bta1,beta0,placebo_cart,epsilon,saveCART)
   ## Get deepest PTA node for each point (NA if never crosses a PTA node)
   max.pta.node <- sapply(path.per.point, function(i) ifelse(length(pta.nodes[pta.nodes %in% i])==0,NA,max(pta.nodes[pta.nodes %in% i])))
   ## Create output list
-  if (saveCART) return(list(beta.diff=dgamma.per.pta.node[max.pta.node],catt=catt.per.pta.node[max.pta.node],CART=placebo_cart))
-  return(list(beta.diff=dgamma.per.pta.node[max.pta.node],catt=catt.per.pta.node[max.pta.node]))
+  if (saveCART) return(list(beta.diff=dgamma.per.pta.node[max.pta.node],catt=catt.per.pta.node[max.pta.node],n_regions=length(unique(max.pta.node[!is.na(max.pta.node)])),CART=placebo_cart))
+  return(list(beta.diff=dgamma.per.pta.node[max.pta.node],catt=catt.per.pta.node[max.pta.node],n_regions=length(unique(max.pta.node[!is.na(max.pta.node)]))))
 }
 
 #' searchPTA

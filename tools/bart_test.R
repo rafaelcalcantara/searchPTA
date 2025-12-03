@@ -7,7 +7,7 @@ library(ggplot2)
 library(gridExtra)
 seed <- 007
 set.seed(seed)
-n <- 1000
+n <- 2000
 n_regions <- 2
 if (n_regions==2) lims <- c(-1,5)
 if (n_regions==3) lims <- c(-0.5,3.2)
@@ -43,25 +43,41 @@ mu_fun <- function(x1,x2,g)
 }
 beta_fun <- function(x1,x2,x3,g)
 {
-  ## Intercept
-  a0 <- ifelse(x2=="large",0.4,0.1)
-  a1 <- ifelse(x3=="a",0.6, ifelse(x3=="b",0.45,0.15))
-  a2 <- ifelse(g==1,0.1,0.3)
-  a <- a0+a1+a2
-  b <- ifelse(g==1,0.4,0.1)
-  ## Return beta
-  return(a+b*x1)
+  out <- rep(NA,length(g))
+  for (i in 1:length(g))
+  {
+    if (x2[i] == "large" & g[i] == 1)
+    {
+      a <- 1; b <- 0.2
+    } else if (x2[i] == "large" & g[i] == 0)
+    {
+      a <- 0.5; b <- 0.6
+    } else if (x2[i] == "small" & x3[i] %in% c("a","b") & g[i] == 1)
+    {
+      a <- 3.5; b <- 0.3
+    } else if (x2[i] == "small" & x3[i] %in% c("a","b") & g[i] == 0)
+    {
+      a <- 0.7; b <- 0.1
+    } else if (x2[i] == "small" & x3[i] == "c" & g[i] == 1)
+    {
+      a <- 1.5; b <- 0.8
+    } else if (x2[i] == "small" & x3[i] == "c" & g[i] == 0)
+    {
+      a <- 0.5; b <- 0.5
+    }
+    out[i] <- a + b*x1[i]
+  }
+  return(out)
 }
 gamma_fun <- function(x1,x2,x3,g) beta_fun(x1,x2,x3,g)
 tau_fun <- function(x2,x3)
 {
-  a0 <- ifelse(x2=="large",0.1,0.6)
-  a1 <- ifelse(x3=="a",0.8, ifelse(x3=="b",0.6,0))
-  return(a0+a1)
+  a <- ifelse(x2=="large",0.05,ifelse(x3=="c",0.3,0.7))
+  return(a)
 }
 alpha_fun <- function(x2)
 {
-  a0 <- ifelse(x2=="large",0,0.4)
+  a0 <- ifelse(x2=="large" & x3=="a",0.25,0.4)
   return(a0)
 }
 ### Calculate function values
@@ -70,7 +86,7 @@ beta <- beta_fun(x1,x2,x3,g)
 gamma <- gamma_fun(x1,x2,x3,g)
 tau <- tau_fun(x2,x3)
 alpha <- alpha_fun(x2)
-catt <- tau+alpha[g==1]
+catt <- (tau+alpha)[g==1]
 ### Define PTA regions
 S <- rep(3,n)
 for (i in 1:n)
@@ -91,14 +107,15 @@ gamma_avg_2_1 <- mean(gamma[S==2 & g==1])
 gamma_avg_2_0 <- mean(gamma[S==2 & g==0])
 gamma_avg_3_1 <- mean(gamma[S==3 & g==1])
 gamma_avg_3_0 <- mean(gamma[S==3 & g==0])
+sig.beta <- 0
 if (n_regions==2)
 {
   beta <- beta - (S==1 & g==1)*(beta_avg_1_1-beta_avg_1_0) - (S==2 & g==1)*(beta_avg_2_1-beta_avg_2_0) - (S==3 & g==1)*(beta_avg_3_1-beta_avg_3_0 - 3)
   gamma <- gamma - (S==1 & g==1)*(gamma_avg_1_1-gamma_avg_1_0) - (S==2 & g==1)*(gamma_avg_2_1-gamma_avg_2_0) - (S==3 & g==1)*(gamma_avg_3_1-gamma_avg_3_0 - 3)
 } else if (n_regions==3)
 {
-  beta <- beta - (S==1 & g==1)*(beta_avg_1_1-beta_avg_1_0) - (S==2 & g==1)*(beta_avg_2_1-beta_avg_2_0) - (S==3 & g==1)*(beta_avg_3_1-beta_avg_3_0)
-  gamma <- gamma - (S==1 & g==1)*(gamma_avg_1_1-gamma_avg_1_0) - (S==2 & g==1)*(gamma_avg_2_1-gamma_avg_2_0) - (S==3 & g==1)*(gamma_avg_3_1-gamma_avg_3_0)
+  beta <- beta - (S==1 & g==1)*(beta_avg_1_1-beta_avg_1_0+rnorm(n,0,sig.beta)) - (S==2 & g==1)*(beta_avg_2_1-beta_avg_2_0) - (S==3 & g==1)*(beta_avg_3_1-beta_avg_3_0)
+  gamma <- gamma - (S==1 & g==1)*(gamma_avg_1_1-gamma_avg_1_0+rnorm(n,0,sig.beta)) - (S==2 & g==1)*(gamma_avg_2_1-gamma_avg_2_0) - (S==3 & g==1)*(gamma_avg_3_1-gamma_avg_3_0)
 }
 ### Generate outcome
 Ey <- rep(mu,3) - rep(gamma,3)*(t==-1) + rep(beta,3)*(t==1) +  rep(tau,3)*z + rep(alpha,3)*z*(t==1)
@@ -122,7 +139,7 @@ mean(y[S==3 & g==1 & t==0])-mean(y[S==3 & g==0 & t==0]) - (mean(y[S==3 & g==1 & 
 #### BART setup
 num_chains <- 20
 draws <- 25
-burnin <- 10
+burnin <- 0
 keep.draws <- (burnin+1):(draws+burnin)
 ncores <- 10
 num_trees <- 100
@@ -186,8 +203,9 @@ beta.prior.2 <- 1.3
 mu.prior <- -qnorm(0.2)
 #### Set epsilon
 summary(apply(abs(g1-g0),2,quantile,0.05))
-eps <- 0.03
+eps <- 0.05
 df <- data.frame(X1=x1,X2=factor(x2,ordered=TRUE),X3=factor(x3,ordered=FALSE),g=g)
+t0 <- Sys.time()
 #### Perform CART search
 cl <- makeCluster(ncores)
 registerDoParallel(cl)
@@ -198,6 +216,53 @@ bart_catt_region <- foreach(i = 1:(draws*num_chains)) %dopar%
 stopCluster(cl)
 #### Obtain CATT posterior
 post.cart.posterior <- do.call("cbind",lapply(bart_catt_region, function(i) i$catt))
+diff.posterior <- do.call("cbind",lapply(bart_catt_region, function(i) i$beta.diff))
+n_regions_posterior <- sapply(bart_catt_region, function(i) i$n_regions)
+##########################
+# cl <- makeCluster(ncores)
+# registerDoParallel(cl)
+# bart_catt_region <- foreach(i = 1:(draws*num_chains)) %dopar%
+#   {
+#     searchPTA::searchPTA(df,g1[,i],g0[,i],bta1[,i],b0[,i],saveCART = FALSE,epsilon=eps,minsplit=2,minbucket=2,cp=0,maxdepth=30)
+#   }
+# stopCluster(cl)
+# #### Obtain CATT posterior
+# post.cart.posterior.2 <- do.call("cbind",lapply(bart_catt_region, function(i) i$catt))
+# diff.posterior.2 <- do.call("cbind",lapply(bart_catt_region, function(i) i$beta.diff))
+# n_regions_posterior.2 <- sapply(bart_catt_region, function(i) i$n_regions)
+# cl <- makeCluster(ncores)
+# registerDoParallel(cl)
+# bart_catt_region <- foreach(i = 1:(draws*num_chains)) %dopar%
+#   {
+#     searchPTA::searchPTA(df,g1[,i],g0[,i],bta1[,i],b0[,i],saveCART = FALSE,epsilon=eps,minsplit=2,minbucket=2,cp=0,maxdepth=30)
+#   }
+# stopCluster(cl)
+# #### Obtain CATT posterior
+# post.cart.posterior.3 <- do.call("cbind",lapply(bart_catt_region, function(i) i$catt))
+# diff.posterior.3 <- do.call("cbind",lapply(bart_catt_region, function(i) i$beta.diff))
+# n_regions_posterior.3 <- sapply(bart_catt_region, function(i) i$n_regions)
+# t1 <- Sys.time()
+# print(t1-t0)
+# post.cart.posterior <- matrix(NA, nrow=n,ncol=draws*num_chains)
+# catt.list <- list(post.cart.posterior.1,post.cart.posterior.2,post.cart.posterior.3)
+# for (i in 1:n)
+# {
+#   for (j in 1:(draws*num_chains))
+#   {
+#     temp <- which(c(diff.posterior.1[i,j],diff.posterior.2[i,j],diff.posterior.3[i,j])==min(c(diff.posterior.1[i,j],diff.posterior.2[i,j],diff.posterior.3[i,j]),na.rm=T))
+#     if (length(temp)>0)
+#     {
+#       if (length(temp)==1)
+#       {
+#         post.cart.posterior[i,j] <- catt.list[[temp]][i,j]
+#       } else
+#       {
+#         post.cart.posterior[i,j] <- catt.list[[temp[1]]][i,j]
+#       }
+#     }
+#   }
+# }
+##########################
 #### Check distribution of posterior probability of identification for points within each region
 prob_id <- rowMeans(!is.na(post.cart.posterior)) ## posterior probability of being in PTA region
 names(prob_id) <- 1:length(prob_id)
