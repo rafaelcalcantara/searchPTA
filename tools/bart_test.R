@@ -1,3 +1,4 @@
+t0 <- Sys.time()
 ## Setup-----------------------------------------------------------------------
 library(stochtree)
 library(foreach)
@@ -7,8 +8,8 @@ library(ggplot2)
 library(gridExtra)
 seed <- 007
 set.seed(seed)
-n <- 2000
-n_regions <- 2
+n <- 1000
+n_regions <- 3
 if (n_regions==2) lims <- c(-1,5)
 if (n_regions==3) lims <- c(-0.5,3.2)
 ## Generate data---------------------------------------------------------------
@@ -119,7 +120,7 @@ if (n_regions==2)
 }
 ### Generate outcome
 Ey <- rep(mu,3) - rep(gamma,3)*(t==-1) + rep(beta,3)*(t==1) +  rep(tau,3)*z + rep(alpha,3)*z*(t==1)
-error.sd <- 0.2*sd(Ey)
+error.sd <- 0.3*sd(Ey)
 y <- Ey + rnorm(n,0,error.sd)
 ### Check that PTA holds in stipulated regions
 mean(beta[S==1 & g==1])-mean(beta[S==1 & g==0])
@@ -390,3 +391,5 @@ for (j in 1:3){
 # pdf(paste0("~/Dropbox/DiD/Figures/ridge_plots_catt_",n_regions,"_regions_n",n,".pdf"), width = 6, height = 8)
 grid.arrange(plotlist[[1]],plotlist[[2]],plotlist[[3]],nrow = 3)
 # dev.off()
+t1 <- Sys.time()
+print(t1-t0)

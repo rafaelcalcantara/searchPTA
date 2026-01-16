@@ -13,11 +13,13 @@ RoxygenNote: 7.3.2
 Imports:
     stats,
     utils,
-    rpart
+    rpart,
+    Rcpp
 Suggests: 
     knitr,
     rmarkdown,
     testthat (>= 3.0.0)
+LinkingTo: Rcpp
 Config/testthat/edition: 3
 VignetteBuilder: knitr
 URL: https://github.com/rafaelcalcantara/searchPTA

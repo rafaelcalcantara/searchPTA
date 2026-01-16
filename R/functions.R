@@ -56,64 +56,35 @@ cart_split <- function(y,x)
     n <- length(y)
     w1 <- w/sum(w) + (1-w)/sum(1-w)
 
-    if (continuous) {
-      temp1 <- cumsum(y*w)/cumsum(w)
-      temp0 <- cumsum(y*(1-w))/cumsum(1-w)
-      temp3 <- (-cumsum(y*w))/(sum(w)-cumsum(w))
-      temp2 <- (-cumsum(y*(1-w)))/(sum(1-w)-cumsum(1-w))
-      lmean <- temp1+temp0
-      lmean <- ifelse(is.na(lmean)|!is.finite(lmean),NA,lmean)
-      rmean <- temp3+temp2
-      rmean <- ifelse(is.na(rmean)|!is.finite(rmean),NA,rmean)
-      ####
-      ym <- sum(y*w1)
-      ####
-      delta.diff <- sapply(1:(n-1), function(i) max(abs(rmean[i]),abs(lmean[i])))
-      delta.diff <- ifelse(is.na(delta.diff),Inf,delta.diff)
-      if (is.na(ym))
-      {
-        goodness <- rep(0,n-1)
-      } else if (any(delta.diff < abs(ym)))
-      {
-        goodness <- 1/delta.diff
-      } else
-      {
-        # delta.diff <- sapply(1:(n-1), function(i) max(abs(rmean[i]),abs(lmean[i])))
-        # delta.diff <- ifelse(is.na(delta.diff),Inf,delta.diff)
-        # goodness <- 1/delta.diff
-        goodness <- runif(n-1,0,1)/10
-      }
-      # goodness <- goodness[-n]
-      ## Store results
-      list(goodness=goodness, direction=sign(lmean[-n]))
+    temp1 <- cumsum(y*w)/cumsum(w)
+    temp0 <- cumsum(y*(1-w))/cumsum(1-w)
+    temp3 <- (-cumsum(y*w))/(sum(w)-cumsum(w))
+    temp2 <- (-cumsum(y*(1-w)))/(sum(1-w)-cumsum(1-w))
+    lmean <- temp1+temp0
+    lmean <- ifelse(is.na(lmean)|!is.finite(lmean),NA,lmean)
+    rmean <- temp3+temp2
+    rmean <- ifelse(is.na(rmean)|!is.finite(rmean),NA,rmean)
+    ####
+    ym <- sum(y*w1)
+    ####
+    delta.diff <- sapply(1:(n-1), function(i) max(abs(rmean[i]),abs(lmean[i])))
+    delta.diff <- ifelse(is.na(delta.diff),Inf,delta.diff)
+    if (is.na(ym))
+    {
+      goodness <- rep(0,n-1)
+    } else if (any(delta.diff < abs(ym)))
+    {
+      goodness <- 1/delta.diff
+    } else
+    {
+      # delta.diff <- sapply(1:(n-1), function(i) max(abs(rmean[i]),abs(lmean[i])))
+      # delta.diff <- ifelse(is.na(delta.diff),Inf,delta.diff)
+      # goodness <- 1/delta.diff
+      goodness <- runif(n-1,0,1)/10
     }
-    else {
-      # Categorical X variable
-      ux <- sort(unique(x))
-      wsum <- tapply(w1, x, sum)
-      ysum  <- tapply(y*w1, x, sum)
-      means <- ysum/wsum
-
-      # For anova splits, we can order the categories by their means
-      #  then use the same code as for a non-categorical
-      ord <- order(means)
-      n <- length(ord)
-      temp1 <- cumsum(ysum[ord]*wsum[ord])/cumsum(wsum[ord])
-      temp0 <- cumsum(ysum[ord]*(1-wsum[ord]))/cumsum(1-wsum[ord])
-      temp3 <- (sum(ysum[ord]*wsum[ord])-cumsum(ysum[ord]*wsum[ord]))/(sum(wsum[ord])-cumsum(wsum[ord]))
-      temp2 <- (sum(ysum[ord]*(1-wsum[ord]))-cumsum(ysum[ord]*(1-wsum[ord])))/(sum(1-wsum[ord])-cumsum(1-wsum[ord]))
-      lmean <- temp1+temp0
-      rmean <- temp3+temp2
-      ####
-      ym <- sum(y*w1)
-      goodness <- ((lmean-ym)^2 + (rmean-ym)^2)/(sum((y-ym)^2))
-      ####
-      delta.diff <- n*var(y)*((abs(rmean) < epsilon) | (abs(lmean) < epsilon))
-      goodness <- goodness[-n] + delta.diff[-n]
-      goodness <- ifelse(is.na(goodness),0,goodness)
-      ## Store results
-      list(goodness=goodness, direction=ux[ord])
-    }
+    # goodness <- goodness[-n]
+    ## Store results
+    list(goodness=goodness, direction=sign(lmean[-n]))
   }
   ### 4) List to be passed on to the rpart function with our custom splitting criteria
   ulist <- list(eval = etemp, split = stemp, init = itemp)
@@ -184,7 +155,11 @@ results <- function(x,gamma1,gamma0,bta1,beta0,placebo_cart,epsilon,saveCART)
   ## Get the path for each point in sample (placebo_cart$where returns the leaf node each point falls into)
   path.per.point <- path.per.node[placebo_cart$where]
   ## Obtain n x k matrix, where each column is one of 1:k PTA regions, values are TRUE if point passes through a region, FALSE otherwise
-  points.in.pta.nodes <- sapply(pta.nodes, function(i) sapply(path.per.point, function(j) i %in% j))
+  # t0 <- Sys.time()
+  # points.in.pta.nodes <- sapply(pta.nodes, function(i) sapply(path.per.point, function(j) i %in% j))
+  # t1 <- Sys.time()
+  points.in.pta.nodes <- checkPTA(as.numeric(pta.nodes),path.per.point)
+  # t2 <- Sys.time()
   ## Obtain CATT per PTA region
   catt.per.pta.node <- apply(points.in.pta.nodes, 2, function(i) mean(bta1[g==1 & i])-mean(beta0[g==0 & i]))
   ## Obtain delta gamma per PTA region
@@ -216,5 +191,6 @@ searchPTA <- function(x,gamma1,gamma0,bta1,beta0,epsilon,saveCART=TRUE,...)
   beta0_temp <- beta0[x$g==0]
   wt <- c(rep(1,length(gamma1_temp)),rep(2,length(gamma0_temp)))
   placebo_cart <- placebo.cart(x=x,gamma1=gamma1_temp,gamma0=gamma0_temp,epsilon=epsilon,wt=wt,...)
-  return(results(x,gamma1=gamma1,gamma0=gamma0,bta1=bta1,beta0=beta0,placebo_cart=placebo_cart,epsilon=epsilon,saveCART=saveCART))
+  out <- results(x,gamma1=gamma1,gamma0=gamma0,bta1=bta1,beta0=beta0,placebo_cart=placebo_cart,epsilon=epsilon,saveCART=saveCART)
+  return(out)
 }
