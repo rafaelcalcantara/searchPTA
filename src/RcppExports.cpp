@@ -22,9 +22,21 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// get_node_paths
+List get_node_paths(List rpart_obj);
+RcppExport SEXP _searchPTA_get_node_paths(SEXP rpart_objSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< List >::type rpart_obj(rpart_objSEXP);
+    rcpp_result_gen = Rcpp::wrap(get_node_paths(rpart_obj));
+    return rcpp_result_gen;
+END_RCPP
+}
 
 static const R_CallMethodDef CallEntries[] = {
     {"_searchPTA_checkPTA", (DL_FUNC) &_searchPTA_checkPTA, 2},
+    {"_searchPTA_get_node_paths", (DL_FUNC) &_searchPTA_get_node_paths, 1},
     {NULL, NULL, 0}
 };
 
