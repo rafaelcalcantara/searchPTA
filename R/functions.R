@@ -1,25 +1,3 @@
-#' get_node_paths
-#'
-#' Auxiliary function to determine the paths to all nodes -- internal or leaf -- in CART
-#' We make use of the fact that the nodes are labeled as follows:
-#' parent node i splits into left node 2i  and right node 2i+1
-#' @param rpart_obj Output from the rpart call
-get_node_paths <- function(rpart_obj) {
-  node_ids <- as.numeric(rownames(rpart_obj$frame))
-
-  paths <- lapply(node_ids, function(n) {
-    path <- c()
-    while (n >= 1) {
-      path <- c(n, path)
-      if (n == 1) break
-      n <- n %/% 2
-    }
-    path
-  })
-
-  names(paths) <- node_ids
-  return(paths)
-}
 #' cart_split
 #'
 #' This code is adapted from the vignette in https://github.com/cran/rpart/blob/master/tests/usersplits.R
@@ -151,6 +129,7 @@ results <- function(x,gamma1,gamma0,bta1,beta0,placebo_cart,epsilon,saveCART)
   }
   pta.nodes <- rownames(placebo_cart$frame)[pta.nodes]
   ## Get the path for every node (internal or terminal)
+  # path.per.node <- get_node_paths(placebo_cart)
   path.per.node <- get_node_paths(placebo_cart)
   ## Get the path for each point in sample (placebo_cart$where returns the leaf node each point falls into)
   path.per.point <- path.per.node[placebo_cart$where]
