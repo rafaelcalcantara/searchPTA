@@ -144,7 +144,8 @@ results <- function(x,gamma1,gamma0,bta1,beta0,placebo_cart,epsilon,saveCART)
   ## Obtain delta gamma per PTA region
   dgamma.per.pta.node <- apply(points.in.pta.nodes, 2, function(i) mean(gamma1[g==1 & i])-mean(gamma0[g==0 & i]))
   ## Get deepest PTA node for each point (NA if never crosses a PTA node)
-  max.pta.node <- sapply(path.per.point, function(i) ifelse(length(pta.nodes[pta.nodes %in% i])==0,NA,max(pta.nodes[pta.nodes %in% i])))
+  max.pta.node <- sapply(path.per.point, function(i) ifelse(length(pta.nodes[pta.nodes %in% i])==0,NA,max(as.numeric(pta.nodes)[pta.nodes %in% i])))
+  max.pta.node <- as.character(max.pta.node)
   ## Create output list
   if (saveCART) return(list(beta.diff=dgamma.per.pta.node[max.pta.node],catt=catt.per.pta.node[max.pta.node],n_regions=length(unique(max.pta.node[!is.na(max.pta.node)])),CART=placebo_cart))
   return(list(beta.diff=dgamma.per.pta.node[max.pta.node],catt=catt.per.pta.node[max.pta.node],n_regions=length(unique(max.pta.node[!is.na(max.pta.node)]))))
