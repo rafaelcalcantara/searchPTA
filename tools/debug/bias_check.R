@@ -124,5 +124,7 @@ for (j in 1:length(unique(preds1))){
 
   print(biascalc(idx1,idx0))}
 
+rpart.plot::rpart.plot(raf$CART)
+
 
 
