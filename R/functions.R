@@ -101,6 +101,7 @@ placebo.cart <- function(x,gamma1,gamma0,epsilon,wt,...)
     xm <- temp
   }
   xm <- data.frame(y,x=xm)
+  xm <- xm[rownames(x),]
   ## Fit CART tree
   out <- rpart::rpart(y~., data = xm,method = cart_split(y,x), weights = wt, parms=epsilon, ...)
   return(out)
@@ -169,7 +170,7 @@ searchPTA <- function(x,gamma1,gamma0,bta1,beta0,epsilon,saveCART=TRUE,...)
   gamma0_temp <- gamma0[x$g==0]
   bta1_temp <- bta1[x$g==1]
   beta0_temp <- beta0[x$g==0]
-  wt <- c(rep(1,length(gamma1_temp)),rep(2,length(gamma0_temp)))
+  wt <- ifelse(x$g==1,1,2)
   placebo_cart <- placebo.cart(x=x,gamma1=gamma1_temp,gamma0=gamma0_temp,epsilon=epsilon,wt=wt,...)
   out <- results(x,gamma1=gamma1,gamma0=gamma0,bta1=bta1,beta0=beta0,placebo_cart=placebo_cart,epsilon=epsilon,saveCART=saveCART)
   return(out)
